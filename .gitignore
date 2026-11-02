@@ -1,0 +1,89 @@
+# Environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Microsoft Office temporary files
+~$*
+*.tmp
+
+# Raw and processed datasets
+data/raw/*
+data/bronze/*
+data/silver/*
+data/offline_store/*
+data/online_store/*
+data/downloads/*
+
+# Keep directory placeholders
+!data/raw/.gitkeep
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/offline_store/.gitkeep
+!data/online_store/.gitkeep
+!data/downloads/.gitkeep
+
+# Kaggle credentials
+kaggle.json
+.kaggle/
+
+# Models and experiment artifacts
+models/*
+artifacts/*
+mlruns/
+wandb/
+
+!models/.gitkeep
+!artifacts/.gitkeep
+
+# Logs and runtime files
+logs/*
+*.log
+*.pid
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Spark
+.sparkStaging/
+metastore_db/
+derby.log
+
+# Docker/local volumes
+docker/volumes/
+volumes/
+
+# Build and packaging
+build/
+dist/
+*.egg-info/
+
+# Test and benchmark outputs
+reports/generated/*
+reports/benchmarks/raw/*
+!reports/generated/.gitkeep
+!reports/benchmarks/raw/.gitkeep

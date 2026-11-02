@@ -1,0 +1,28 @@
+feature_set:
+  name: transaction_velocity
+  version: 1
+  entity_key: card_entity_id
+  source: silver_transactions
+  event_timestamp: event_time
+  cutoff_policy: strict_before
+  owner: data-engineering
+
+features:
+  - name: txn_count_24h
+    description: Số giao dịch trước giao dịch hiện tại trong 24 giờ
+    aggregation: count
+    window: 24h
+  - name: amount_sum_24h
+    description: Tổng giá trị giao dịch trước giao dịch hiện tại trong 24 giờ
+    value_column: TransactionAmt
+    aggregation: sum
+    window: 24h
+  - name: amount_avg_7d
+    description: Giá trị giao dịch trung bình trước giao dịch hiện tại trong 7 ngày
+    value_column: TransactionAmt
+    aggregation: avg
+    window: 7d
+  - name: seconds_since_previous_txn
+    description: Số giây kể từ giao dịch trước đó của entity
+    aggregation: time_since_previous
+

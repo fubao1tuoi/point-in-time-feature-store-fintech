@@ -1,0 +1,25 @@
+sources:
+  train_transaction:
+    path: data/raw/train_transaction.csv
+    primary_key: TransactionID
+    required_columns:
+      - TransactionID
+      - isFraud
+      - TransactionDT
+      - TransactionAmt
+  train_identity:
+    path: data/raw/train_identity.csv
+    join_key: TransactionID
+    optional: true
+  test_transaction:
+    path: data/raw/test_transaction.csv
+    primary_key: TransactionID
+    required_columns:
+      - TransactionID
+      - TransactionDT
+      - TransactionAmt
+  test_identity:
+    path: data/raw/test_identity.csv
+    join_key: TransactionID
+    optional: true
+

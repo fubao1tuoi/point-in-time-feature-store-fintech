@@ -1,0 +1,17 @@
+project:
+  name: pit-feature-store-fintech
+  environment: development
+  timezone: UTC
+  synthetic_epoch: "2017-01-01T00:00:00Z"
+
+storage:
+  raw: data/raw
+  bronze: data/bronze
+  silver: data/silver
+  offline_store: data/offline_store
+
+processing:
+  observation_time_column: event_time
+  transaction_id_column: TransactionID
+  target_column: isFraud
+
