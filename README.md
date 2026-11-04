@@ -67,8 +67,11 @@ pytest
 
 ## Tài liệu
 
+- [Project progress tracker](PROJECT_PROGRESS.md) — checklist chính để theo dõi bước đã làm và việc tiếp theo
 - [Project outline](PROJECT_OUTLINE_IEEE_CIS_PIT_FEATURE_STORE.md)
 - [Lý thuyết Point-in-Time Correct Feature Store](LY_THUYET_POINT_IN_TIME_CORRECT_FEATURE_STORE.md)
+- [IEEE-CIS data dictionary](docs/data_dictionary.md)
+- [Surrogate entity-key decision](docs/entity_key_decision.md)
 - [Tài liệu trong docs](docs/README.md)
 
 ## Nguyên tắc dữ liệu

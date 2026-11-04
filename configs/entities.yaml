@@ -1,0 +1,51 @@
+entity_resolution:
+  primary:
+    candidate: card1_addr1
+    columns: [card1, addr1]
+    output_column: card_address_entity_id
+    version: 1
+    null_policy: strict
+    hash_algorithm: sha256
+    hash_prefix: cae_v1_
+
+  secondary:
+    candidate: card1
+    columns: [card1]
+    output_column: card_entity_id
+    version: 1
+    null_policy: strict
+    hash_algorithm: sha256
+    hash_prefix: ce_v1_
+
+  routing:
+    prefer: card_address
+    when_primary_missing: card_only
+    resolution_level_column: entity_resolution_level
+    primary_availability_column: has_card_address_entity
+
+  feature_policy:
+    compute_both_views_when_primary_available: true
+    keep_feature_names_separate: true
+    primary_feature_prefix: card_addr_
+    secondary_feature_prefix: card_
+
+entity_candidates:
+  card1:
+    description: Baseline dùng một thuộc tính card có coverage đầy đủ.
+    columns: [card1]
+
+  card1_addr1:
+    description: Card code kết hợp billing region của purchaser.
+    columns: [card1, addr1]
+
+  card_attributes:
+    description: Tổ hợp các thuộc tính card có coverage tương đối tốt.
+    columns: [card1, card2, card3, card5]
+
+  card_attributes_addr1:
+    description: Tổ hợp card attributes và billing region.
+    columns: [card1, card2, card3, card5, addr1]
+
+  card_attributes_addr1_email:
+    description: Tổ hợp card, billing region và purchaser email domain.
+    columns: [card1, card2, card3, card5, addr1, P_emaildomain]

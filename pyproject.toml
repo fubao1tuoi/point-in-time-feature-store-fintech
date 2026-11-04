@@ -15,6 +15,10 @@ dependencies = [
     "pyyaml>=6,<7",
 ]
 
+[project.scripts]
+profile-ieee-cis = "pit_feature_store.profiling:main"
+analyze-entity-keys = "pit_feature_store.entity_analysis:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8,<9",
