@@ -92,9 +92,9 @@ Benchmark, tối ưu, tài liệu và demo
 
 ### Mốc 3 — Xây Bronze/Silver data foundation
 
-- [ ] Viết cấu hình source paths và synthetic epoch.
+- [x] Viết và validate cấu hình source paths cùng synthetic epoch UTC.
 - [ ] Viết Bronze ingestion giữ nguyên dữ liệu nguồn và metadata ingest.
-- [ ] Tạo checksum manifest cho raw inputs.
+- [x] Tạo checksum manifest SHA-256 cho raw inputs.
 - [ ] Viết Silver transformation: cast type và deduplicate có kiểm soát.
 - [ ] Tạo `event_time = synthetic_epoch + TransactionDT seconds`.
 - [ ] Left join transaction với identity và tạo `has_identity`.
@@ -172,11 +172,10 @@ Benchmark, tối ưu, tài liệu và demo
 
 Chỉ tập trung vào **Mốc 3 — Bronze/Silver data foundation**, theo thứ tự:
 
-1. Tạo `configs/sources.yaml` và chốt synthetic epoch.
-2. Viết ingestion tạo Bronze Parquet cùng checksum/metadata.
-3. Viết transformation tạo `silver_transactions`.
-4. Gắn `event_time`, identity, hai entity IDs và routing metadata.
-5. Viết data-quality tests và chạy trên dữ liệu thật.
+1. Viết ingestion tạo Bronze Parquet cùng checksum/metadata.
+2. Viết transformation tạo `silver_transactions`.
+3. Gắn `event_time`, identity, hai entity IDs và routing metadata.
+4. Viết data-quality tests và chạy trên dữ liệu thật.
 
 Không bắt đầu PIT engine trước khi canonical Silver dataset và event-time contract ổn định.
 
@@ -186,5 +185,6 @@ Không bắt đầu PIT engine trước khi canonical Silver dataset và event-t
 |---|---|---|
 | 2026-11-03 | Hoàn thành profiling, data dictionary và chốt primary/secondary entities cho MVP. | Xây Bronze/Silver pipeline. |
 | 2026-11-03 | Bổ sung streaming SHA-256 và `raw_checksums.json` cho raw inputs. | Xây Bronze ingestion và lưu checksum vào metadata. |
+| 2026-11-04 | Chốt source-config contract v1 và synthetic epoch `2017-01-01T00:00:00Z`, có validation tự động. | Xây Bronze ingestion. |
 
 Khi hoàn thành một mốc, thêm một dòng mới vào bảng này. Không xóa lịch sử cũ.

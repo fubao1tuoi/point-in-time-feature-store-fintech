@@ -2,6 +2,7 @@ project:
   name: pit-feature-store-fintech
   environment: development
   timezone: UTC
+  # Mốc giả lập, không phải ngày giao dịch thật của IEEE-CIS.
   synthetic_epoch: "2017-01-01T00:00:00Z"
 
 storage:
@@ -11,6 +12,8 @@ storage:
   offline_store: data/offline_store
 
 processing:
+  transaction_time_offset_column: TransactionDT
+  transaction_time_offset_unit: seconds
   observation_time_column: event_time
   transaction_id_column: TransactionID
   target_column: isFraud

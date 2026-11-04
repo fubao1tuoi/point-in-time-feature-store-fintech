@@ -1,6 +1,6 @@
-# Point-in-Time Correct Feature Store for Fintech
+# Point-in-Time Correct Feature Store
 
-Data Engineering project xây dựng một Point-in-Time Correct Feature Store phục vụ bài toán phát hiện gian lận trên bộ dữ liệu IEEE-CIS Fraud Detection.
+Dự án xây dựng một Point-in-Time Correct Feature Store nhằm tạo historical features mà không sử dụng dữ liệu tương lai, đồng thời hỗ trợ versioning, reproducibility và tái sử dụng feature. IEEE-CIS Fraud Detection được dùng làm bộ dữ liệu và use case kiểm chứng; platform không bị giới hạn riêng cho bài toán phát hiện gian lận hoặc lĩnh vực Fintech.
 
 ## Mục tiêu
 

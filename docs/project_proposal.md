@@ -2,12 +2,12 @@
 
 ## 1. Tên đề tài
 
-Point-in-Time Correct Feature Store for Fintech Fraud Detection
+Point-in-Time Correct Feature Store
 
 ## 2. Bài toán
 
-Xây dựng một Feature Store tạo ra các feature lịch sử cho mỗi giao
-dịch mà không sử dụng dữ liệu xảy ra sau thời điểm cần dự đoán.
+Xây dựng một Feature Store tạo ra các feature lịch sử cho mỗi observation
+mà không sử dụng dữ liệu xảy ra sau thời điểm cần dự đoán.
 
 ## 3. Vấn đề cần giải quyết
 
@@ -17,15 +17,17 @@ gây data leakage và làm kết quả đánh giá offline cao không thực t�
 Project áp dụng Point-in-Time Join để bảo đảm feature dùng cho một
 giao dịch tại thời điểm T chỉ được tạo từ dữ liệu tồn tại trước T.
 
-## 4. Dataset
+## 4. Dataset và use case kiểm chứng
 
-IEEE-CIS Fraud Detection, gồm:
+IEEE-CIS Fraud Detection được dùng làm dữ liệu thực nghiệm cho platform, gồm:
 
 - Transaction data.
 - Identity/device data.
 - TransactionDT biểu diễn thời gian tương đối.
 - isFraud là nhãn phân loại.
 - TransactionID dùng để nối transaction và identity.
+
+Fraud detection là use case minh họa, không phải giới hạn phạm vi của Feature Store.
 
 ## 5. Input
 

@@ -1,6 +1,12 @@
+version: 1
+
 sources:
   train_transaction:
     path: data/raw/train_transaction.csv
+    file_format: csv
+    split: train
+    table: transaction
+    bronze_output: train_transaction
     primary_key: TransactionID
     required_columns:
       - TransactionID
@@ -9,10 +15,20 @@ sources:
       - TransactionAmt
   train_identity:
     path: data/raw/train_identity.csv
+    file_format: csv
+    split: train
+    table: identity
+    bronze_output: train_identity
     join_key: TransactionID
     optional: true
+    required_columns:
+      - TransactionID
   test_transaction:
     path: data/raw/test_transaction.csv
+    file_format: csv
+    split: test
+    table: transaction
+    bronze_output: test_transaction
     primary_key: TransactionID
     required_columns:
       - TransactionID
@@ -20,6 +36,12 @@ sources:
       - TransactionAmt
   test_identity:
     path: data/raw/test_identity.csv
+    file_format: csv
+    split: test
+    table: identity
+    bronze_output: test_identity
     join_key: TransactionID
     optional: true
+    required_columns:
+      - TransactionID
 

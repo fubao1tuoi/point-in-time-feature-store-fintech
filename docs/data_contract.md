@@ -10,6 +10,13 @@ Data contract được cập nhật sau dataset profiling và surrogate entity a
 - `isFraud` thuộc `{0, 1}` trong training data.
 - Identity là dữ liệu tùy chọn và phải được nối bằng left join.
 
+### Time configuration
+
+- Timeline kỹ thuật dùng synthetic epoch cố định `2017-01-01T00:00:00Z` (UTC).
+- `event_time = synthetic_epoch + TransactionDT seconds`.
+- Synthetic epoch không phải ngày giao dịch thật; nó chỉ bảo toàn thứ tự và khoảng cách thời gian.
+- Đổi synthetic epoch là thay đổi data contract và yêu cầu rebuild toàn bộ Silver/PIT outputs.
+
 ## 2. Surrogate entity contract v1
 
 MVP cung cấp hai entity view độc lập:
