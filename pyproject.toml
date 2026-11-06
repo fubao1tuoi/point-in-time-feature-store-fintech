@@ -9,6 +9,7 @@ description = "Point-in-time correct feature store for fraud detection using IEE
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "duckdb>=1.1,<2",
     "pydantic>=2.7,<3",
     "pydantic-settings>=2.2,<3",
     "pyarrow>=16,<20",
@@ -18,6 +19,8 @@ dependencies = [
 [project.scripts]
 profile-ieee-cis = "pit_feature_store.profiling:main"
 analyze-entity-keys = "pit_feature_store.entity_analysis:main"
+ingest-bronze = "pit_feature_store.bronze:main"
+build-silver = "pit_feature_store.silver:main"
 
 [project.optional-dependencies]
 dev = [

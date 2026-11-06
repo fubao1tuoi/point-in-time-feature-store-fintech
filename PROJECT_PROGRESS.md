@@ -1,14 +1,14 @@
 # Project Progress Tracker
 
-> Đây là file theo dõi tiến độ chính của project. Sau mỗi lần hoàn thành công việc, tick `[x]`, cập nhật cột **Bằng chứng** và chuyển mục **Việc tiếp theo**. Kế hoạch chi tiết và giải thích kỹ thuật vẫn nằm trong [`PROJECT_OUTLINE_IEEE_CIS_PIT_FEATURE_STORE.md`](./PROJECT_OUTLINE_IEEE_CIS_PIT_FEATURE_STORE.md).
+> Đây là file theo dõi tiến độ chính của project. Sau mỗi lần hoàn thành công việc, tick `[x]`, cập nhật cột **Bằng chứng** và chuyển mục **Việc tiếp theo**. Kế hoạch chi tiết nằm trong [`PROJECT_OUTLINE_IEEE_CIS_PIT_FEATURE_STORE.md`](./PROJECT_OUTLINE_IEEE_CIS_PIT_FEATURE_STORE.md); giải thích các phần đã triển khai, cách chạy và kết quả thực tế được cập nhật liên tục tại [`docs/IMPLEMENTATION_LOG.md`](./docs/IMPLEMENTATION_LOG.md).
 
 ## 1. Trạng thái hiện tại
 
 ```text
-Giai đoạn hiện tại : Tuần 1 — Data understanding và thiết kế nền tảng
-Đã hoàn thành       : Dataset audit + data dictionary + entity-key analysis
-Đang làm tiếp       : Bronze/Silver pipeline và canonical transaction schema
-Mục tiêu gần nhất   : Tạo silver_transactions.parquet chạy lặp lại được
+Giai đoạn hiện tại : Tuần 2 — Feature design và PIT preparation
+Đã hoàn thành       : Audit + entity analysis + Bronze/Silver data foundation
+Đang làm tiếp       : Feature Registry validator và golden PIT dataset
+Mục tiêu gần nhất   : Chốt feature contract và expected PIT outputs tính bằng tay
 ```
 
 ## 2. Quy trình tổng thể
@@ -22,9 +22,9 @@ Data dictionary
         ↓
 Entity-key analysis
         ↓
-Bronze và Silver pipeline             ← BƯỚC TIẾP THEO
+Bronze và Silver pipeline
         ↓
-Feature Registry + golden dataset
+Feature Registry + golden dataset     ← BƯỚC TIẾP THEO
         ↓
 Point-in-Time feature engine
         ↓
@@ -93,23 +93,44 @@ Benchmark, tối ưu, tài liệu và demo
 ### Mốc 3 — Xây Bronze/Silver data foundation
 
 - [x] Viết và validate cấu hình source paths cùng synthetic epoch UTC.
-- [ ] Viết Bronze ingestion giữ nguyên dữ liệu nguồn và metadata ingest.
+- [x] Viết Bronze ingestion giữ nguyên giá trị nguồn và bổ sung metadata ingest.
 - [x] Tạo checksum manifest SHA-256 cho raw inputs.
-- [ ] Viết Silver transformation: cast type và deduplicate có kiểm soát.
-- [ ] Tạo `event_time = synthetic_epoch + TransactionDT seconds`.
-- [ ] Left join transaction với identity và tạo `has_identity`.
-- [ ] Thêm cả hai entity IDs và routing metadata vào Silver.
-- [ ] Ghi `silver_transactions` ra Parquet, partition theo thời gian phù hợp.
-- [ ] Viết data-quality tests cho row count, uniqueness, event time và left join.
-- [ ] Kiểm tra chạy lại cho kết quả logic giống nhau.
+- [x] Viết Silver transformation: cast type và deduplicate có kiểm soát.
+- [x] Tạo `event_time = synthetic_epoch + TransactionDT seconds`.
+- [x] Left join transaction với identity và tạo `has_identity`.
+- [x] Thêm cả hai entity IDs và routing metadata vào Silver.
+- [x] Ghi `silver_transactions` ra Parquet, partition theo thời gian phù hợp.
+- [x] Viết data-quality tests cho row count, uniqueness, event time và left join.
+- [x] Kiểm tra chạy lại cho kết quả logic giống nhau.
 
 **Hoàn thành khi:** có thể chạy một command để tạo canonical `silver_transactions` mà không mất transaction và tất cả quality tests pass.
+
+**Bằng chứng Bronze ingestion:**
+
+- [`pipelines/ingest_bronze.py`](./pipelines/ingest_bronze.py)
+- [`src/pit_feature_store/bronze.py`](./src/pit_feature_store/bronze.py)
+- [`tests/unit/test_bronze.py`](./tests/unit/test_bronze.py)
+- Runtime manifest local: `reports/generated/bronze_ingestion_manifest.json`
+- Kết quả full run ngày 2026-11-05: 4/4 sources thành công, checksum khớp raw
+  manifest, 1.383.371 rows được ghi vào Bronze Parquet.
+
+**Bằng chứng Silver transformation:**
+
+- [`pipelines/build_silver.py`](./pipelines/build_silver.py)
+- [`src/pit_feature_store/silver.py`](./src/pit_feature_store/silver.py)
+- [`tests/unit/test_silver.py`](./tests/unit/test_silver.py)
+- Runtime manifest local: `reports/generated/silver_build_manifest.json`
+- Kết quả full run ngày 2026-11-05: 1.097.231 transactions, 14 monthly
+  partitions, 0 duplicate/conflicting IDs, identity coverage khớp source.
+- Hai full runs liên tiếp có cùng semantic fingerprint
+  `rows=1097231;xor64=1668359128455216076` theo thuật toán v3 loại run/timestamp
+  metadata động.
 
 ### Mốc 4 — Feature Registry và golden dataset
 
 - [x] Tạo khung YAML cho primary và secondary transaction velocity features.
-- [ ] Chốt quy tắc same timestamp bằng `event_time` và `TransactionID`.
-- [ ] Chốt 8–12 feature MVP cho cả hai entity views.
+- [x] Chốt quy tắc same timestamp bằng thứ tự `(event_time, TransactionID)`.
+- [x] Chốt 10 feature MVP cho cả hai entity views (20 output columns).
 - [ ] Viết schema/model validate feature definitions.
 - [ ] Viết `docs/feature_catalog.md`.
 - [ ] Tạo golden dataset nhỏ bằng tay.
@@ -170,14 +191,14 @@ Benchmark, tối ưu, tài liệu và demo
 
 ## 4. Việc tiếp theo
 
-Chỉ tập trung vào **Mốc 3 — Bronze/Silver data foundation**, theo thứ tự:
+Chỉ tập trung vào **Mốc 4 — Feature Registry và golden dataset**, theo thứ tự:
 
-1. Viết ingestion tạo Bronze Parquet cùng checksum/metadata.
-2. Viết transformation tạo `silver_transactions`.
-3. Gắn `event_time`, identity, hai entity IDs và routing metadata.
-4. Viết data-quality tests và chạy trên dữ liệu thật.
+1. Viết schema/validator cho feature definitions.
+2. Viết feature catalog.
+3. Tạo golden dataset và expected PIT outputs tính bằng tay.
 
-Không bắt đầu PIT engine trước khi canonical Silver dataset và event-time contract ổn định.
+Không bắt đầu full-data PIT engine trước khi feature definitions và golden expected
+results không còn mơ hồ.
 
 ## 5. Nhật ký cập nhật
 
@@ -186,5 +207,9 @@ Không bắt đầu PIT engine trước khi canonical Silver dataset và event-t
 | 2026-11-03 | Hoàn thành profiling, data dictionary và chốt primary/secondary entities cho MVP. | Xây Bronze/Silver pipeline. |
 | 2026-11-03 | Bổ sung streaming SHA-256 và `raw_checksums.json` cho raw inputs. | Xây Bronze ingestion và lưu checksum vào metadata. |
 | 2026-11-04 | Chốt source-config contract v1 và synthetic epoch `2017-01-01T00:00:00Z`, có validation tự động. | Xây Bronze ingestion. |
+| 2026-11-05 | Hoàn thành streaming Bronze ingestion với staging, SHA-256, lineage metadata và Parquet reconciliation. | Chạy Bronze ingestion trên dữ liệu thật, sau đó xây Silver transformation. |
+| 2026-11-05 | Hoàn thành Silver transformation, left identity join, event time, entity routing, partitioning, quality checks và deterministic rerun. | Thiết kế Feature Registry validator và golden PIT dataset. |
+| 2026-11-06 | Chốt lexicographic PIT cutoff `(event_time, TransactionID)`, current-event exclusion và inclusive window-start boundary. | Chốt 8–12 feature MVP cho hai entity views. |
+| 2026-11-06 | Chốt 10 logical historical features cho cả primary và secondary views, gồm velocity, amount, recency và product diversity. | Viết schema/validator cho Feature Registry. |
 
 Khi hoàn thành một mốc, thêm một dòng mới vào bảng này. Không xóa lịch sử cũ.
