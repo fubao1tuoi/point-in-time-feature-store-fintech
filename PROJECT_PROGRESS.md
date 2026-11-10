@@ -5,10 +5,10 @@
 ## 1. Trạng thái hiện tại
 
 ```text
-Giai đoạn hiện tại : Tuần 2 — Feature design và PIT preparation
-Đã hoàn thành       : Audit + entity analysis + Bronze/Silver data foundation
-Đang làm tiếp       : Feature Registry validator và golden PIT dataset
-Mục tiêu gần nhất   : Chốt feature contract và expected PIT outputs tính bằng tay
+Giai đoạn hiện tại : Tuần 2 — Point-in-Time feature computation
+Đã hoàn thành       : Audit + entities + Bronze/Silver + Feature Registry/golden dataset
+Đang làm tiếp       : PIT feature engine trên golden dataset
+Mục tiêu gần nhất   : Golden feature tests pass 100% trước khi chạy full data
 ```
 
 ## 2. Quy trình tổng thể
@@ -24,9 +24,9 @@ Entity-key analysis
         ↓
 Bronze và Silver pipeline
         ↓
-Feature Registry + golden dataset     ← BƯỚC TIẾP THEO
+Feature Registry + golden dataset
         ↓
-Point-in-Time feature engine
+Point-in-Time feature engine          ← BƯỚC TIẾP THEO
         ↓
 Offline feature store + backfill
         ↓
@@ -131,33 +131,33 @@ Benchmark, tối ưu, tài liệu và demo
 - [x] Tạo khung YAML cho primary và secondary transaction velocity features.
 - [x] Chốt quy tắc same timestamp bằng thứ tự `(event_time, TransactionID)`.
 - [x] Chốt 10 feature MVP cho cả hai entity views (20 output columns).
-- [ ] Viết schema/model validate feature definitions.
-- [ ] Viết `docs/feature_catalog.md`.
-- [ ] Tạo golden dataset nhỏ bằng tay.
-- [ ] Tạo expected result cho no-history, boundary, same-time, null entity và future event.
+- [x] Viết schema/model validate feature definitions.
+- [x] Viết `docs/feature_catalog.md`.
+- [x] Tạo golden dataset nhỏ bằng tay.
+- [x] Tạo expected result cho no-history, boundary, same-time, null entity và future event.
 
 **Hoàn thành khi:** YAML sai bị từ chối tự động và expected values của golden dataset được review bằng tay.
 
 ### Mốc 5 — Point-in-Time feature computation
 
-- [ ] Dùng mỗi transaction làm observation tại `prediction_time = event_time`.
-- [ ] Tính `card_addr_*` theo primary entity.
-- [ ] Tính `card_*` theo secondary entity.
-- [ ] Chỉ dùng lịch sử thỏa `history_time < prediction_time`.
-- [ ] Xử lý đúng window boundary và same timestamp.
-- [ ] Giữ observation không có history bằng left PIT join.
-- [ ] Viết golden tests và append-only invariance test.
-- [ ] Chứng minh thêm future rows không làm đổi feature của past rows.
+- [x] Dùng mỗi transaction làm observation tại `prediction_time = event_time`.
+- [x] Tính `card_addr_*` theo primary entity.
+- [x] Tính `card_*` theo secondary entity.
+- [x] Chỉ dùng lịch sử thỏa PIT cutoff theo `(event_time, TransactionID)`.
+- [x] Xử lý đúng window boundary và same timestamp.
+- [x] Giữ observation không có history bằng left PIT semantics.
+- [x] Viết golden tests và append-only invariance test.
+- [x] Chứng minh thêm future rows không làm đổi feature của past rows.
 
 **Hoàn thành khi:** golden tests pass 100%, số output bằng số observations và không có cutoff violation.
 
 ### Mốc 6 — Offline feature store và backfill
 
-- [ ] Materialize feature table có version ra Parquet.
-- [ ] Partition theo observation date/time range.
-- [ ] Lưu run ID, source checksum, feature version, row count và cutoff range.
-- [ ] Viết backfill command nhận `start_time` và `end_time`.
-- [ ] Kiểm tra backfill idempotent, không tạo duplicate.
+- [x] Materialize feature table có version ra Parquet.
+- [x] Partition theo `observation_date` để hỗ trợ đọc theo time range.
+- [x] Lưu run ID, source checksum, feature version, row count và cutoff range.
+- [x] Viết backfill command nhận `start_time` và `end_time`.
+- [x] Kiểm tra backfill idempotent, không tạo duplicate.
 
 ### Mốc 7 — Training dataset và baseline model
 
@@ -191,14 +191,13 @@ Benchmark, tối ưu, tài liệu và demo
 
 ## 4. Việc tiếp theo
 
-Chỉ tập trung vào **Mốc 4 — Feature Registry và golden dataset**, theo thứ tự:
+Tiếp tục **Mốc 7 — Training dataset và baseline model**, theo thứ tự:
 
-1. Viết schema/validator cho feature definitions.
-2. Viết feature catalog.
-3. Tạo golden dataset và expected PIT outputs tính bằng tay.
+1. Chốt temporal train/validation/internal-test split.
+2. Xây training dataset bằng cách join Silver với offline PIT feature table v1.
 
-Không bắt đầu full-data PIT engine trước khi feature definitions và golden expected
-results không còn mơ hồ.
+Mốc 6 đã hoàn thành versioned/partitioned offline table, lineage manifest và idempotent
+daily backfill contract. Trước Mốc 7 cần materialize full Silver feature table v1.
 
 ## 5. Nhật ký cập nhật
 
@@ -211,5 +210,12 @@ results không còn mơ hồ.
 | 2026-11-05 | Hoàn thành Silver transformation, left identity join, event time, entity routing, partitioning, quality checks và deterministic rerun. | Thiết kế Feature Registry validator và golden PIT dataset. |
 | 2026-11-06 | Chốt lexicographic PIT cutoff `(event_time, TransactionID)`, current-event exclusion và inclusive window-start boundary. | Chốt 8–12 feature MVP cho hai entity views. |
 | 2026-11-06 | Chốt 10 logical historical features cho cả primary và secondary views, gồm velocity, amount, recency và product diversity. | Viết schema/validator cho Feature Registry. |
+| 2026-11-09 | Hoàn thành Pydantic Feature Registry schema, CLI validator, cross-view consistency checks và negative unit tests. | Viết feature catalog. |
+| 2026-11-09 | Hoàn thành Feature Catalog v1 cho 10 logical features, 2 entity views và 20 output columns. | Tạo golden dataset và expected PIT outputs tính bằng tay. |
+| 2026-11-09 | Tạo golden input 10 transactions bằng tay, bao phủ boundary, ties, null, entity isolation và physical-order independence. | Tính expected 20-feature outputs bằng tay. |
+| 2026-11-09 | Hoàn thành và review 200 golden expected values cho 10 observations × 20 feature columns; independent cross-check khớp toàn bộ. | Xây PIT feature engine và chạy golden tests. |
+| 2026-11-09 | Hoàn thành observation layer: một transaction thành một observation, `prediction_time = event_time`, có grain/time quality checks. | Tính primary `card_addr_*` features trên golden dataset. |
+| 2026-11-10 | Hoàn thành Mốc 5: tính đủ 20 PIT features, golden oracle, boundary/same-time, no-history, append-only invariance và deterministic-rerun tests. | Thiết kế versioned offline feature table và bounded backfill ở Mốc 6. |
+| 2026-11-10 | Hoàn thành Mốc 6: versioned daily Parquet, run manifest, source checksum, bounded backfill và idempotency/no-duplicate tests. | Materialize full feature table v1 rồi xây temporal training dataset ở Mốc 7. |
 
 Khi hoàn thành một mốc, thêm một dòng mới vào bảng này. Không xóa lịch sử cũ.

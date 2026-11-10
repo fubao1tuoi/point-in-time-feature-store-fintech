@@ -1,0 +1,79 @@
+# INTENTIONALLY INVALID DEMO FILE.
+# Fix exercise: change the first feature window from `1hour` to `1h`.
+feature_set:
+  name: card_address_transaction_velocity
+  version: 1
+  entity_key: card_address_entity_id
+  source: silver_transactions
+  event_timestamp: event_time
+  observation_id: TransactionID
+  ordering_columns: [event_time, TransactionID]
+  cutoff_policy: lexicographic_strict_before
+  same_timestamp_policy: lower_transaction_id_is_earlier
+  current_event_policy: exclude
+  window_start_boundary: inclusive
+  output_prefix: card_addr_
+  owner: data-engineering
+
+features:
+  - name: txn_count_1h
+    description: Số giao dịch lịch sử của card-address entity trong 1 giờ
+    aggregation: count
+    window: 1hour # Intentional error: valid value is 1h
+    no_history_value: 0
+  - name: txn_count_24h
+    description: Số giao dịch lịch sử của card-address entity trong 24 giờ
+    aggregation: count
+    window: 24h
+    no_history_value: 0
+  - name: txn_count_7d
+    description: Số giao dịch lịch sử của card-address entity trong 7 ngày
+    aggregation: count
+    window: 7d
+    no_history_value: 0
+  - name: amount_sum_1h
+    description: Tổng TransactionAmt lịch sử của card-address entity trong 1 giờ
+    value_column: TransactionAmt
+    aggregation: sum
+    window: 1h
+    ignore_null_values: true
+    no_history_value: 0.0
+  - name: amount_sum_24h
+    description: Tổng TransactionAmt lịch sử của card-address entity trong 24 giờ
+    value_column: TransactionAmt
+    aggregation: sum
+    window: 24h
+    ignore_null_values: true
+    no_history_value: 0.0
+  - name: amount_sum_7d
+    description: Tổng TransactionAmt lịch sử của card-address entity trong 7 ngày
+    value_column: TransactionAmt
+    aggregation: sum
+    window: 7d
+    ignore_null_values: true
+    no_history_value: 0.0
+  - name: amount_avg_24h
+    description: Trung bình TransactionAmt lịch sử của card-address entity trong 24 giờ
+    value_column: TransactionAmt
+    aggregation: avg
+    window: 24h
+    ignore_null_values: true
+    no_history_value: null
+  - name: amount_max_7d
+    description: TransactionAmt lớn nhất trong lịch sử card-address entity trong 7 ngày
+    value_column: TransactionAmt
+    aggregation: max
+    window: 7d
+    ignore_null_values: true
+    no_history_value: null
+  - name: seconds_since_previous_txn
+    description: Số giây từ giao dịch lịch sử gần nhất của card-address entity
+    aggregation: time_since_previous
+    no_history_value: null
+  - name: distinct_product_count_7d
+    description: Số ProductCD khác nhau trong lịch sử card-address entity trong 7 ngày
+    value_column: ProductCD
+    aggregation: count_distinct
+    window: 7d
+    ignore_null_values: true
+    no_history_value: 0

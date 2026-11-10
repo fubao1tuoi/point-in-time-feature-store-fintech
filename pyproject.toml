@@ -21,6 +21,8 @@ profile-ieee-cis = "pit_feature_store.profiling:main"
 analyze-entity-keys = "pit_feature_store.entity_analysis:main"
 ingest-bronze = "pit_feature_store.bronze:main"
 build-silver = "pit_feature_store.silver:main"
+validate-feature-registry = "pit_feature_store.feature_registry:main"
+materialize-offline-features = "pit_feature_store.offline_store:main"
 
 [project.optional-dependencies]
 dev = [

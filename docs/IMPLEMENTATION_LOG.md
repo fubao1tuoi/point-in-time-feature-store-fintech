@@ -688,7 +688,7 @@ nhau.
 
 ## 6. Mốc 4 — Feature Registry và golden dataset
 
-**Trạng thái:** Đang thực hiện.
+**Trạng thái:** Hoàn thành ngày 2026-11-10.
 
 ### 6.1. PIT cutoff và same-timestamp policy
 
@@ -928,11 +928,622 @@ Definitions:
 - [`transaction_velocity_v1.yaml`](../configs/features/transaction_velocity_v1.yaml)
 - [`transaction_velocity_card_v1.yaml`](../configs/features/transaction_velocity_card_v1.yaml)
 
+#### Feature Registry schema và validator
+
+**Trạng thái:** Hoàn thành ngày 2026-11-09.
+
+##### Tại sao cần validator?
+
+YAML có thể parse thành công nhưng vẫn sai semantics, ví dụ `sum` không có
+`value_column`, window bằng `0h`, primary dùng nhầm prefix `card_`, hoặc hai entity views
+có danh sách feature khác nhau. Nếu chỉ phát hiện khi chạy full-data feature job thì lỗi
+vừa tốn thời gian vừa có thể tạo output sai nhưng trông vẫn hợp lệ.
+
+Validator biến Feature Registry thành một **executable contract**: config sai bị từ chối
+trước computation, còn config hợp lệ tạo ra một cấu trúc typed mà engine Mốc 5 có thể
+dùng trực tiếp.
+
+##### Cấu trúc model
+
+Ba lớp Pydantic được triển khai:
+
+| Model | Trách nhiệm |
+|---|---|
+| `FeatureDefinition` | Validate một feature: tên, aggregation, window, value column, null policy và no-history default. |
+| `FeatureSetDefinition` | Validate entity/source/PIT ordering, cutoff policies, prefix, version và owner của một view. |
+| `FeatureRegistry` | Validate toàn YAML, feature-name uniqueness và rendered output-column uniqueness. |
+
+Mọi model dùng `extra="forbid"`, nên typo hoặc field không được hỗ trợ không bị âm thầm
+bỏ qua.
+
+##### Các rule được kiểm tra và lý do
+
+| Rule | Lý do |
+|---|---|
+| Feature/set name phải theo `snake_case` | Output columns ổn định, dễ dùng trong SQL/Parquet. |
+| Version là số nguyên từ 1 | Mọi thay đổi semantics có mốc version rõ ràng. |
+| Window khớp `[positive integer][s|m|h|d]` | Loại `0h`, số âm và đơn vị mơ hồ như `hour`. |
+| Count/sum/avg/max/count-distinct phải có window | MVP định nghĩa chúng là bounded rolling aggregates. |
+| `time_since_previous` không có bounded window | Recency tìm prior event gần nhất trên history hợp lệ. |
+| Sum/avg/max/count-distinct bắt buộc có `value_column` | Engine cần biết cột được aggregate. |
+| Count/recency cấm `value_column` | Tránh config thừa tạo hiểu nhầm về semantics. |
+| Value aggregates bắt buộc `ignore_null_values=true` | Null handling phải explicit và đồng nhất. |
+| Count/sum/distinct dùng no-history value 0 | Entity hợp lệ nhưng không có history/value tạo zero aggregate. |
+| Avg/max/recency dùng no-history value null | Không có giá trị để tính, nên 0 sẽ mang nghĩa sai. |
+| PIT order phải là `[event_time, TransactionID]` | Bảo toàn same-timestamp/current-event contract đã chốt. |
+| Cutoff/current/boundary policy chỉ nhận giá trị v1 đã chốt | Không cho một YAML âm thầm dùng semantics khác. |
+| Entity key phải khớp output prefix | Không ghi card aggregate vào tên `card_addr_*` hoặc ngược lại. |
+| Feature names/output columns phải unique | Ngăn overwrite hoặc cột trùng khi materialize. |
+| Primary và secondary version phải bằng nhau | Hai view của cùng MVP được phát hành đồng bộ. |
+| Ordered semantic signatures của hai view phải giống nhau | Bảo đảm cả hai cùng 10 logical features; chỉ entity/prefix/description được khác. |
+
+##### Cách chạy và theo dõi
+
+Kích hoạt đúng môi trường rồi chạy:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python pipelines/validate_feature_registry.py
+```
+
+Kết quả hợp lệ hiện tại:
+
+```text
+[valid] configs\features\transaction_velocity_v1.yaml: card_address_transaction_velocity v1, 10 features
+[valid] configs\features\transaction_velocity_card_v1.yaml: card_transaction_velocity v1, 10 features
+[feature-registry] success: 20 output columns
+```
+
+Khi config sai, CLI in `[feature-registry] invalid: ...` và trả exit code 1. Vì đây là
+config-only validation nên không cần chạy lại Bronze/Silver hoặc đọc full dataset.
+
+##### Kiểm thử
+
+Negative tests cố ý tạo config sai để chứng minh validator từ chối:
+
+- unknown field;
+- duplicate feature name;
+- window sai hoặc thiếu;
+- value aggregate thiếu `value_column`/null policy;
+- recency khai báo window hoặc value column;
+- no-history default sai;
+- PIT ordering hoặc entity prefix sai;
+- primary/secondary semantic definitions lệch nhau.
+
+Implementation và tests:
+
+- [`feature_registry.py`](../src/pit_feature_store/feature_registry.py)
+- [`validate_feature_registry.py`](../pipelines/validate_feature_registry.py)
+- [`test_feature_registry.py`](../tests/unit/test_feature_registry.py)
+
+#### Feature Catalog v1
+
+**Trạng thái:** Hoàn thành ngày 2026-11-09.
+
+Feature Registry YAML dành cho máy đọc và validator; Feature Catalog là tài liệu tham
+chiếu dành cho người xây training dataset, model, test và demo. Catalog tập trung trả lời:
+
+- Feature có tên/output columns nào?
+- Dùng entity, source column, aggregation và window nào?
+- Tuân thủ PIT cutoff ra sao?
+- Kiểu output và giá trị khi không có history là gì?
+- Feature hỗ trợ mô tả hành vi nào và có giới hạn gì?
+
+Catalog v1 bao gồm:
+
+- metadata của feature-set version 1;
+- sự khác nhau giữa primary `card_addr_*` và secondary `card_*`;
+- PIT, same-timestamp, null và no-history rules dùng chung;
+- bảng tổng hợp 10 logical definitions;
+- reference chi tiết từng feature;
+- danh sách đầy đủ 20 output columns;
+- ví dụ diễn giải kết hợp feature;
+- consumer guidance và versioning rules.
+
+YAML vẫn là nguồn thực thi. Khi semantics thay đổi, registry, validator, catalog và
+feature version phải được cập nhật cùng nhau để tránh documentation drift.
+
+Tài liệu: [`feature_catalog.md`](feature_catalog.md).
+
+#### Golden input dataset
+
+**Trạng thái:** Hoàn thành ngày 2026-11-09.
+
+Golden dataset là fixture nhỏ có chủ đích, không phải sample ngẫu nhiên từ full IEEE-CIS.
+Mỗi row được đặt time/entity/value bằng tay để một rule PIT cụ thể có thể được kiểm tra
+và expected feature values có thể tính độc lập với implementation.
+
+Fixture gồm 10 transactions và bảy cột tối thiểu:
+
+```text
+TransactionID
+event_time
+TransactionAmt
+ProductCD
+card_entity_id
+card_address_entity_id
+fixture_case
+```
+
+Entity IDs dùng tên dễ đọc thay cho SHA-256 để review nhóm lịch sử bằng mắt. File được
+lưu cố ý không theo logical order; engine phải sort theo `(event_time, TransactionID)`
+chứ không dựa vào physical row order.
+
+##### Case coverage
+
+| Case | Thiết kế trong fixture | Mục đích |
+|---|---|---|
+| No history | ID 101; card B ID 201 | Count/sum/distinct bằng 0, avg/max/recency null. |
+| Same timestamp | IDs 102 và 103 | ID nhỏ hơn làm history; current và ID lớn hơn bị loại. |
+| 7-day boundary | 101 → 102/103 | Event đúng lower boundary phải được tính. |
+| 1-hour boundary | 102/103 → 105 | Kiểm tra inclusive start của window 1h. |
+| 24-hour boundary | 102/103 → 106 | Kiểm tra inclusive start của window 24h. |
+| Future exclusion | 104/105/106 so với observations trước | Future rows không được đi ngược vào past outputs. |
+| Entity isolation | Card B ID 201 | Amount 999 không được ảnh hưởng card A. |
+| Same secondary, different primary | ID 501 | Secondary chia sẻ card A history nhưng primary addr 2 tách riêng. |
+| Null primary | ID 301 | `card_addr_*` null, `card_*` vẫn tính được. |
+| Null both entities | ID 401 | Cả hai feature views null. |
+| Null source values | ID 104 | Transaction count vẫn tăng; amount/product aggregates bỏ null. |
+| Physical-order independence | CSV bị xáo thứ tự | Output phải dựa vào logical tuple order. |
+
+##### Tại sao chưa tạo expected output trong cùng bước?
+
+Golden input và expected output được tách thành hai checkpoint review. Input trước hết
+phải chứng minh chứa đúng edge cases; sau đó expected 20 columns được tính bằng tay.
+Không dùng PIT engine chưa được kiểm chứng để tự sinh expected values, vì expected có thể
+lặp lại chính lỗi của implementation và làm test pass giả.
+
+Integrity tests hiện kiểm tra:
+
+- đúng 10 rows và `TransactionID` unique;
+- đủ 10 named fixture cases;
+- khoảng cách chính xác 1 giờ, 24 giờ và 7 ngày;
+- same timestamp có ID order rõ ràng;
+- primary/secondary/null entity relations đúng;
+- null amount/product tồn tại;
+- physical order khác logical order.
+
+Artifacts:
+
+- [`golden_transactions.csv`](../tests/point_in_time/fixtures/golden_transactions.csv)
+- [`Point-in-Time fixture README`](../tests/point_in_time/README.md)
+- [`test_golden_fixture.py`](../tests/point_in_time/test_golden_fixture.py)
+
+#### Golden expected PIT outputs
+
+**Trạng thái:** Hoàn thành ngày 2026-11-09.
+
+Expected fixture chứa:
+
+```text
+10 observations × 20 feature columns = 200 expected values
+```
+
+Rows được key bằng `TransactionID`; columns lấy đúng thứ tự từ hai validated Feature
+Registries. Chuỗi `null` được dùng rõ ràng trong CSV để phân biệt null với ô bị thiếu.
+
+Expected values được tính theo hai bước:
+
+1. Review thủ công eligible history của từng observation theo entity, tuple cutoff và
+   lower window boundary.
+2. Chạy một calculator đối chiếu độc lập, không sử dụng PIT engine Mốc 5; toàn bộ 200
+   values khớp với manual oracle.
+
+Các checkpoint chính:
+
+| Observation | Expected behavior được chứng minh |
+|---:|---|
+| 101 | No-history defaults: count/sum/distinct 0; avg/max/recency null. |
+| 102 | ID 101 đúng biên 7 ngày được tính; recency 604.800 giây. |
+| 103 | Cùng timestamp nhìn thấy ID 102; recency bằng 0; current event bị loại. |
+| 201 | Card B cô lập khỏi card A dù amount bằng 999. |
+| 501 | Primary addr 2 không có history; secondary card A có history. |
+| 301 | Toàn bộ primary outputs null; secondary outputs vẫn được tính. |
+| 401 | Cả 20 outputs null vì cả hai entity IDs null. |
+| 104 | Null amount/product không ảnh hưởng count/recency, bị bỏ khỏi value aggregates. |
+| 105 | IDs lúc 00:00 đúng biên một giờ và được tính. |
+| 106 | IDs lúc 00:00 đúng biên 24 giờ; window một giờ không có history. |
+
+Manual review cũng chỉ rõ past outputs không chứa future IDs. Mốc 5 sẽ dùng expected CSV
+làm oracle: engine phải tạo đúng 10 rows/20 columns và so sánh numeric values bằng
+tolerance phù hợp.
+
+Artifacts:
+
+- [`golden_expected_features.csv`](../tests/point_in_time/fixtures/golden_expected_features.csv)
+
+### 7.3. Correctness invariants kết thúc Mốc 5
+
+Các golden-value tests được bổ sung bằng test riêng cho từng điều kiện mà PIT engine phải
+luôn giữ đúng:
+
+| Invariant | Cách chứng minh tự động |
+|---|---|
+| Cutoff | Observation đầu tiên có 0 history; current row và rows tương lai không xuất hiện trong aggregate. |
+| Same timestamp | Với 102 và 103 cùng thời gian, 103 thấy 102 vì ID nhỏ hơn; 102 không thấy 103. |
+| Inclusive boundary | Rows nằm đúng biên 1h, 24h và 7d vẫn được tính. |
+| No history | Observation vẫn tồn tại, nhận default 0/null đúng registry. |
+| Null entity | Observation vẫn tồn tại và toàn bộ feature của view tương ứng là null. |
+| Append-only invariance | Thêm row tương lai năm 2030 với amount 999999 rồi tính lại; mọi feature quá khứ phải giống hệt. |
+| Deterministic rerun | Đảo physical order của history rồi chạy lại; output phải giống hệt lần đầu. |
+| Output grain | Mỗi view có số row bằng observations và không trùng `TransactionID`. |
+
+Append-only invariance là phép thử quan trọng nhất cho yêu cầu “dữ liệu tương lai mới được
+thêm vào không làm đổi feature cũ”. Test giữ nguyên 10 observations, chụp snapshot feature,
+append future history, materialize lại rồi so sánh toàn bộ snapshot chứ không chỉ row count.
+
+Chạy toàn bộ correctness tests của feature engine:
+
+```powershell
+python -m pytest tests/point_in_time/test_feature_computation.py -v
+```
+
+Theo dõi từng test name; kết quả yêu cầu là `8 passed`. Chạy toàn bộ project và static
+checks trước khi chuyển mốc:
+
+```powershell
+python -m pytest -q
+python -m ruff check .
+git diff --check
+```
+
+Mốc 5 chỉ xác nhận computation đúng trên golden dataset. Output vẫn là DuckDB temp tables
+trong test run; việc ghi versioned Parquet, partition, manifest và backfill thuộc Mốc 6.
+
+## 8. Mốc 6 — Offline feature store và backfill
+
+**Trạng thái:** Hoàn thành ngày 2026-11-10.
+
+### 8.1. Materialize feature table có version ra Parquet
+
+**Trạng thái:** Hoàn thành ngày 2026-11-10.
+
+Mốc 5 chỉ tạo DuckDB temp tables. Task này thêm một publish boundary để kết quả feature
+tồn tại sau khi process kết thúc và có thể được training pipeline đọc lại.
+
+Command `materialize_offline_features.py` thực hiện:
+
+1. Validate cặp primary/secondary registries và version consistency.
+2. Đọc canonical Silver Parquet thành `silver_transactions`.
+3. Tạo một observation cho mỗi transaction.
+4. Tính 10 `card_addr_*` và 10 `card_*` features bằng PIT engine đã kiểm thử.
+5. Join hai views theo `TransactionID`, không thay đổi observation grain.
+6. Ghi ZSTD Parquet vào staging directory.
+7. Đọc lại Parquet để reconcile row count, unique ID, version và đủ 20 feature columns.
+8. Rename staging directory thành immutable version directory sau khi mọi check pass.
+
+Schema của offline table v1 gồm:
+
+```text
+TransactionID
+event_time
+prediction_time
+observation_date
+10 card_addr_* columns
+10 card_* columns
+feature_table_version
+primary_feature_set_name
+primary_feature_set_version
+secondary_feature_set_name
+secondary_feature_set_version
+```
+
+Tổng cộng 29 columns sau khi bổ sung `observation_date` ở task 6.2.
+`feature_table_version` là version của published table; hai registry
+versions cho biết chính xác công thức primary/secondary nào đã tạo feature. Việc lưu cả ba
+giúp training dataset không vô tình trộn output từ các công thức khác nhau.
+
+Output mặc định:
+
+```text
+data/offline_store/transaction_features/v1/
+  observation_date=YYYY-MM-DD/part_0.parquet
+```
+
+Version đã tồn tại bị từ chối trước khi computation bắt đầu. Đây là immutable policy: sửa
+feature definition phải publish version mới, không âm thầm thay nội dung `v1`. Staging
+directory được dọn khi lỗi nên consumer không đọc phải file dở dang.
+
+Quality checks hiện có:
+
+| Check | Ý nghĩa |
+|---|---|
+| Rows = unique `TransactionID` | Giữ grain một transaction/một feature row. |
+| Parquet rows = computed rows | Không mất dòng khi ghi file. |
+| Version mismatch = 0 | Mọi row thuộc đúng published version. |
+| Đủ 20 registry outputs | Không publish schema thiếu feature. |
+| Existing version rejected | Không ghi đè dataset đã được model sử dụng. |
+| Staging cleanup | Job lỗi không để lại output có vẻ hợp lệ. |
+
+Test dùng golden input nhưng ghi/đọc một partitioned Parquet dataset thật trong temporary
+directory. Nó xác minh 10 rows, 29 columns, 20 features, version metadata và việc lần chạy
+thứ hai không thể ghi đè `v1`.
+
+Chạy test:
+
+```powershell
+python -m pytest tests/point_in_time/test_offline_materialization.py -v
+```
+
+Kết quả yêu cầu: `3 passed`. Cách chạy full Silver và theo dõi bốn stages được ghi tại
+[`pipelines/README.md`](../pipelines/README.md). Task này chưa tạo run manifest và chưa nhận
+bounded backfill time range; đó là các task kế tiếp của Mốc 6.
+
+Implementation và tests:
+
+- [`offline_store.py`](../src/pit_feature_store/offline_store.py)
+- [`materialize_offline_features.py`](../pipelines/materialize_offline_features.py)
+- [`test_offline_materialization.py`](../tests/point_in_time/test_offline_materialization.py)
+
+### 8.2. Partition theo observation date/time range
+
+**Trạng thái:** Hoàn thành ngày 2026-11-10.
+
+Offline table không còn là một file lớn. Pipeline derive:
+
+```text
+observation_date := CAST(prediction_time AS DATE)
+```
+
+và ghi Hive-style partitions:
+
+```text
+transaction_features/v1/
+  observation_date=2017-01-01/part_0.parquet
+  observation_date=2017-01-02/part_0.parquet
+  ...
+```
+
+`prediction_time` vẫn được giữ nguyên timestamp để tính PIT chính xác; `observation_date`
+chỉ là routing column cho storage. Partition theo ngày phù hợp vì training split, backfill
+và audit đều chủ yếu chọn dữ liệu theo khoảng thời gian. Query chỉ cần một vài ngày có thể
+prune các directory khác, giảm I/O so với đọc một file chứa toàn bộ lịch sử.
+
+Trước publish, pipeline đối chiếu thêm:
+
+- số distinct `observation_date` trước và sau khi ghi;
+- minimum và maximum observation date;
+- tổng số Parquet files và tổng dung lượng;
+- row count, unique ID, version và feature schema từ task 6.1.
+
+Golden dataset có ba ngày (`2017-01-01`, `2017-01-08`, `2017-01-09`) nên test bắt buộc
+tạo đúng ba partition directories. Test đọc lại bằng glob và `hive_partitioning=true`,
+chứng minh partition column được phục hồi và toàn bộ 10 rows vẫn có mặt.
+
+Chạy:
+
+```powershell
+python -m pytest tests/point_in_time/test_offline_materialization.py -v
+```
+
+Kết quả yêu cầu: `3 passed`. Full-data command và cách theo dõi vẫn giữ nguyên trong
+[`pipelines/README.md`](../pipelines/README.md).
+
+### 8.3. Run manifest và lineage
+
+**Trạng thái:** Hoàn thành ngày 2026-11-10.
+
+Mỗi initial materialization hoặc backfill tạo một JSON manifest trong version directory.
+Manifest ghi `run_id`, thời gian chạy, mode, SHA-256 của ordered source Parquet files,
+feature-table/registry versions, cutoff range, row count, unique IDs, partition count,
+observation-date range và semantic fingerprint.
+
+Source checksum trả lời “run này đã đọc đúng snapshot nào”; feature versions trả lời “công
+thức nào được dùng”; cutoff trả lời “những observations nào được tạo”; row count/fingerprint
+cho phép so sánh hai lần chạy. Thiếu một trong các nhóm này thì khó tái tạo training data.
+
+### 8.4. Bounded daily backfill
+
+**Trạng thái:** Hoàn thành ngày 2026-11-10.
+
+CLI nhận `--start-time`, `--end-time` và `--backfill`. Khoảng cutoff là half-open:
+
+```text
+start_time <= observation.event_time < end_time
+```
+
+History source không bị cắt theo start time: feature của observation đầu range vẫn được
+phép đọc lịch sử trước range, nhưng PIT predicate luôn loại current/future rows. Chỉ tập
+observations bị giới hạn, nên output chỉ chứa các ngày cần backfill.
+
+Vì storage partition theo ngày, boundaries bắt buộc là UTC midnight. Quy tắc này tránh
+trường hợp chạy nửa ngày nhưng replace cả daily partition và làm mất nửa ngày còn lại.
+
+### 8.5. Idempotency và no-duplicate proof
+
+**Trạng thái:** Hoàn thành ngày 2026-11-10.
+
+Backfill không append file mới vào partition cũ. Pipeline ghi partition mới vào staging,
+validate, tạm backup partition cũ rồi replace. Nếu publish lỗi, partition đã thay được rollback.
+Backup và staging được dọn sau run.
+
+Automated test chạy cùng range ngày 2017-01-08 hai lần và xác nhận:
+
+- hai semantic fingerprints bằng nhau;
+- mỗi run có run ID/manifest riêng để audit;
+- toàn version vẫn có 10 rows và 10 unique `TransactionID`;
+- partition 2017-01-08 vẫn có đúng 8 rows, không tăng thành 16;
+- không còn staging/backup directory sau khi chạy.
+
+Chạy:
+
+```powershell
+python -m pytest tests/point_in_time/test_offline_materialization.py -v
+```
+
+Kết quả yêu cầu: `3 passed`. Với các bằng chứng này, toàn bộ Mốc 6 hoàn thành; full Silver
+materialization vẫn là một runtime operation phải chạy trước khi xây training dataset Mốc 7.
+- [`GOLDEN_EXPECTED_REVIEW.md`](../tests/point_in_time/GOLDEN_EXPECTED_REVIEW.md)
+- Structural/manual assertions trong
+  [`test_golden_fixture.py`](../tests/point_in_time/test_golden_fixture.py)
+
 #### Các bước còn lại
 
-1. Viết schema và validator cho Feature Registry.
-2. Viết feature catalog.
-3. Tạo golden dataset nhỏ và expected PIT outputs tính bằng tay.
+Mốc 4 đã đủ điều kiện hoàn thành: registry sai bị từ chối, feature definitions có catalog,
+golden input và expected outputs đã được review. Bước tiếp theo là Mốc 5 — xây PIT feature
+engine trên golden dataset trước khi chạy full Silver data.
+
+## 7. Mốc 5 — Point-in-Time feature computation
+
+**Trạng thái:** Hoàn thành ngày 2026-11-10.
+
+### 7.1. Một transaction là một observation
+
+**Trạng thái:** Hoàn thành ngày 2026-11-09.
+
+#### Observation là gì?
+
+Observation là giao dịch đang cần tạo historical features và sau đó được model chấm
+điểm. Grain của bài toán là:
+
+```text
+1 TransactionID = 1 observation = 1 feature-output row
+```
+
+Không lọc transaction theo `isFraud`, identity availability hoặc entity availability ở
+bước này. Observation thiếu entity vẫn phải được giữ để feature view tương ứng nhận null
+và model không bị selection bias.
+
+#### `prediction_time = event_time` có nghĩa gì?
+
+`event_time` là thời điểm transaction xảy ra trên synthetic timeline. `prediction_time`
+là thời điểm cutoff mà historical features phải mô phỏng. Với use case chấm fraud ngay
+khi giao dịch xuất hiện, hai giá trị bằng nhau:
+
+```text
+prediction_time := event_time
+```
+
+Đây là cùng một timestamp với hai vai trò ngữ nghĩa, không phải cộng/trừ thời gian hoặc
+tạo một thời điểm mới. Feature engine ở bước sau dùng `prediction_time` làm cutoff và
+`event_time` của history làm event timestamp.
+
+#### Implementation
+
+Hàm `materialize_observations()` nhận tên một DuckDB source table và tạo temp table
+`pit_observations`:
+
+```sql
+SELECT
+    source.*,
+    source.event_time AS prediction_time
+FROM source
+```
+
+Toàn bộ source columns được giữ để các bước tiếp theo dùng entity IDs,
+`TransactionAmt`, `ProductCD` và lineage. Temp table phù hợp cho computation graph trong
+một run; materialized offline output sẽ được triển khai ở Mốc 6.
+
+#### Quality checks và lý do
+
+| Check | Điều kiện | Tại sao cần |
+|---|---|---|
+| Required columns | Có `TransactionID`, `event_time` | Không thể định danh/cutoff observation nếu thiếu. |
+| Null ID | 0 | Observation phải có stable key để join expected/output. |
+| Null event time | 0 | Không xác định được PIT cutoff. |
+| Duplicate ID | 0 | Bảo vệ grain một transaction/một observation. |
+| Pre-existing `prediction_time` | Bị từ chối | Không tin timestamp được source gắn sẵn; phải derive từ canonical `event_time`. |
+| Row reconciliation | Source rows = observation rows | Không mất hoặc nhân bản transaction. |
+| Time equality | Mismatch = 0 | Chứng minh `prediction_time` đúng bằng `event_time`. |
+| Source-column preservation | Giữ toàn bộ cột + `prediction_time` | Downstream có đủ dữ liệu tính 20 features. |
+
+Hàm trả `ObservationMetrics` để run sau này có thể ghi row count và violation counts vào
+manifest/audit log.
+
+#### Golden verification
+
+Golden input có 10 transactions và tạo đúng 10 observations. Tests còn cố ý tạo source
+có null ID, null event time, duplicate ID và pre-defined prediction time để chứng minh
+observation layer fail fast.
+
+Chạy:
+
+```powershell
+python -m pytest tests/point_in_time/test_observations.py -v
+```
+
+Kết quả hiện tại: `6 passed`.
+
+Implementation và tests:
+
+- [`pit_features.py`](../src/pit_feature_store/pit_features.py)
+- [`test_observations.py`](../tests/point_in_time/test_observations.py)
+
+Task này chưa tính rolling features. Các bước tiếp theo lần lượt tính primary
+`card_addr_*`, secondary `card_*`, rồi so sánh toàn bộ output với golden oracle.
+
+### 7.2. Tính feature cho primary và secondary entity views
+
+**Trạng thái:** Hoàn thành ngày 2026-11-10.
+
+Feature engine đọc trực tiếp registry YAML đã được validation ở Mốc 4. Vì vậy YAML là
+nguồn định nghĩa duy nhất cho entity key, prefix, aggregation, window, value column và
+no-history semantics; code không viết riêng 20 công thức độc lập.
+
+Hai lần materialize sử dụng cùng một engine:
+
+| View | Entity key | Prefix | Số feature |
+|---|---|---:|---:|
+| Primary | `card_address_entity_id` | `card_addr_` | 10 |
+| Secondary | `card_entity_id` | `card_` | 10 |
+
+Với mỗi observation, một history row chỉ được dùng khi đồng thời:
+
+```text
+history.entity_id = observation.entity_id
+(history.event_time, history.TransactionID)
+    < (observation.prediction_time, observation.TransactionID)
+history.event_time >= prediction_time - window
+```
+
+Điều kiện tuple bảo đảm current row và future row không lọt vào history, đồng thời xử lý
+deterministic các giao dịch cùng timestamp. Dấu `>=` ở điều kiện cuối làm biên trái của
+window là inclusive đúng theo registry.
+
+Engine hỗ trợ đủ aggregation của MVP:
+
+- `count`: số transaction lịch sử;
+- `sum`, `avg`, `max`: tổng hợp `TransactionAmt`, bỏ qua amount null;
+- `count_distinct`: số `ProductCD` khác nhau, bỏ qua product null;
+- `time_since_previous`: số giây từ event gần nhất tới prediction time.
+
+Nếu entity của observation là null, toàn bộ 10 feature của view đó là null. Observation
+vẫn được giữ lại. Nếu entity tồn tại nhưng không có history, count/sum/distinct nhận 0;
+avg/max/seconds-since-previous nhận null theo contract của registry.
+
+#### Quality checks
+
+Trước khi tính, engine kiểm tra observations và history có đủ ID, timestamp, entity key và
+value columns. Sau khi tính, engine bắt buộc:
+
+```text
+output rows = observation rows
+duplicate output TransactionID = 0
+```
+
+Nhờ đó mỗi view vẫn giữ grain `1 TransactionID = 1 feature row`. Sau đó primary và
+secondary có thể join bằng `TransactionID` thành 10 observations × 20 feature columns.
+
+#### Golden verification
+
+Tests chạy toàn bộ 10 golden transactions qua cả hai view và so sánh từng giá trị với file
+expected tính tay: tổng cộng 200 giá trị feature. So sánh bao gồm null semantics, số thực,
+same timestamp, biên 1h/24h/7d, null entity và sự khác nhau giữa primary/secondary.
+
+Chạy riêng bước này:
+
+```powershell
+python -m pytest tests/point_in_time/test_feature_computation.py -v
+```
+
+Khi chạy, pytest hiển thị riêng ba test: primary golden comparison, secondary golden
+comparison và kiểm tra join hai view không đổi grain. Dòng cuối phải báo `3 passed`.
+
+Implementation và test:
+
+- [`pit_features.py`](../src/pit_feature_store/pit_features.py)
+- [`test_feature_computation.py`](../tests/point_in_time/test_feature_computation.py)
+- [`golden_expected_features.csv`](../tests/point_in_time/fixtures/golden_expected_features.csv)
 
 Sau mỗi bước, bổ sung vào tài liệu này khi code/test hoặc quyết định tương ứng đã được
 xác nhận.

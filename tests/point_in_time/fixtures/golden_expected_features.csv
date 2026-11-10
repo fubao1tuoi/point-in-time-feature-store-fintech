@@ -1,0 +1,11 @@
+TransactionID,card_addr_txn_count_1h,card_addr_txn_count_24h,card_addr_txn_count_7d,card_addr_amount_sum_1h,card_addr_amount_sum_24h,card_addr_amount_sum_7d,card_addr_amount_avg_24h,card_addr_amount_max_7d,card_addr_seconds_since_previous_txn,card_addr_distinct_product_count_7d,card_txn_count_1h,card_txn_count_24h,card_txn_count_7d,card_amount_sum_1h,card_amount_sum_24h,card_amount_sum_7d,card_amount_avg_24h,card_amount_max_7d,card_seconds_since_previous_txn,card_distinct_product_count_7d
+101,0,0,0,0.0,0.0,0.0,null,null,null,0,0,0,0,0.0,0.0,0.0,null,null,null,0
+102,0,0,1,0.0,0.0,10.0,null,10.0,604800,1,0,0,1,0.0,0.0,10.0,null,10.0,604800,1
+103,1,1,2,20.0,20.0,30.0,20.0,20.0,0,2,1,1,2,20.0,20.0,30.0,20.0,20.0,0,2
+201,0,0,0,0.0,0.0,0.0,null,null,null,0,0,0,0,0.0,0.0,0.0,null,null,null,0
+501,0,0,0,0.0,0.0,0.0,null,null,null,0,2,2,2,50.0,50.0,50.0,25.0,30.0,600,2
+301,null,null,null,null,null,null,null,null,null,null,3,3,3,110.0,110.0,110.0,36.6666666667,60.0,300,2
+401,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null
+104,2,2,2,50.0,50.0,50.0,25.0,30.0,1800,2,4,4,4,150.0,150.0,150.0,37.5,60.0,900,3
+105,3,3,3,50.0,50.0,50.0,25.0,30.0,1800,2,5,5,5,150.0,150.0,150.0,37.5,60.0,1800,3
+106,0,4,4,0.0,120.0,120.0,40.0,70.0,82800,3,0,6,6,0.0,220.0,220.0,44.0,70.0,82800,4

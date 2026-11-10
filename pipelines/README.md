@@ -157,3 +157,120 @@ Chạy lại cùng lệnh để kiểm tra tính deterministic. Manifest thành 
 "matches_previous_run": true
 ```
 
+## Feature Registry validation
+
+Validator đọc cả primary và secondary registry, kiểm tra schema của từng feature và
+đối chiếu semantics giữa hai entity views.
+
+Chạy:
+
+```powershell
+python pipelines/validate_feature_registry.py
+```
+
+Hoặc sau khi cài package editable:
+
+```powershell
+validate-feature-registry
+```
+
+Kết quả thành công:
+
+```text
+[valid] configs/features/transaction_velocity_v1.yaml: ... v1, 10 features
+[valid] configs/features/transaction_velocity_card_v1.yaml: ... v1, 10 features
+[feature-registry] success: 20 output columns
+```
+
+Exit code bằng 0 khi cả hai registry hợp lệ. YAML sai sẽ in
+`[feature-registry] invalid: ...` và trả exit code 1, phù hợp để chặn CI/pipeline trước
+khi tính feature. Bước này chỉ đọc config, không đọc hoặc tạo lại Bronze/Silver data.
+
+## Versioned offline feature table
+
+Materializer đọc Silver Parquet, tạo observations, tính 10 primary + 10 secondary PIT
+features và publish một immutable Parquet table theo version.
+
+Chạy:
+
+```powershell
+python pipelines/materialize_offline_features.py --feature-table-version 1
+```
+
+Theo dõi bốn stage:
+
+```text
+[1/4] validating feature registries and loading Silver source
+[2/4] computing primary and secondary PIT feature views
+[3/4] writing and validating staged Parquet
+[4/4] publishing immutable version directory
+[offline-store] success: data\offline_store\transaction_features\v1
+```
+
+Chỉ coi job thành công khi có dòng `[offline-store] success`. Stage 2 là phần lâu nhất vì
+tính rolling history. Output được viết vào staging trước; chỉ publish sau khi row count,
+unique `TransactionID`, feature schema và version đều hợp lệ.
+
+Đầu ra mặc định được partition theo ngày của `prediction_time`:
+
+```text
+data/offline_store/transaction_features/v1/
+  observation_date=YYYY-MM-DD/part_0.parquet
+```
+
+`observation_date = CAST(prediction_time AS DATE)`. Khi đọc một time range, DuckDB có thể
+prune các thư mục ngày không liên quan thay vì scan toàn bộ feature table.
+
+Một version là immutable. Nếu `v1` đã tồn tại, command dừng thay vì ghi đè. Khi feature
+definition thay đổi, tăng `--feature-table-version`. Partition, run manifest và bounded
+backfill sẽ được bổ sung ở các task tiếp theo của Mốc 6.
+
+Kiểm tra nhanh output:
+
+```powershell
+python -c "import duckdb; print(duckdb.sql(\"SELECT COUNT(*), COUNT(DISTINCT TransactionID), MIN(observation_date), MAX(observation_date) FROM read_parquet('data/offline_store/transaction_features/v1/**/*.parquet', hive_partitioning=true)\").fetchall())"
+```
+
+Chạy test nhỏ trước khi chạy full Silver:
+
+```powershell
+python -m pytest tests/point_in_time/test_offline_materialization.py -v
+```
+
+Kết quả yêu cầu là `3 passed`.
+
+### Daily backfill
+
+Backfill một khoảng ngày theo half-open interval `[start_time, end_time)`:
+
+```powershell
+python pipelines/materialize_offline_features.py `
+  --feature-table-version 1 `
+  --backfill `
+  --start-time 2017-01-08T00:00:00Z `
+  --end-time 2017-01-09T00:00:00Z
+```
+
+Backfill đọc Silver history để tính PIT nhưng chỉ tạo observations trong cutoff range. Vì
+partition theo ngày, hai boundary bắt buộc là UTC midnight. Partition trong range được ghi
+staging, validate rồi **replace**, không append; chạy lại cùng range không tạo duplicate.
+
+Mỗi initial/backfill run tạo manifest tại:
+
+```text
+data/offline_store/transaction_features/v1/manifests/<run_id>.json
+```
+
+Manifest lưu run ID, mode, source SHA-256, source file count, feature versions, cutoff
+`[start inclusive, end exclusive)`, row/partition counts, observation-date range và semantic
+fingerprint. Theo dõi terminal giống bốn stage của initial materialization và chỉ coi thành
+công khi có `[offline-store] success`.
+
+Test initial materialization, manifest và chạy backfill hai lần:
+
+```powershell
+python -m pytest tests/point_in_time/test_offline_materialization.py -v
+```
+
+Kết quả hiện tại phải là `3 passed`.
+

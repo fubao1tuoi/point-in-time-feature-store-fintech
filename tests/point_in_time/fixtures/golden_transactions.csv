@@ -1,0 +1,11 @@
+TransactionID,event_time,TransactionAmt,ProductCD,card_entity_id,card_address_entity_id,fixture_case
+104,2017-01-08T00:30:00Z,,,ce_card_a,cae_card_a_addr_1,null_values
+201,2017-01-08T00:00:00Z,999.0,R,ce_card_b,cae_card_b_addr_1,entity_isolation
+101,2017-01-01T00:00:00Z,10.0,W,ce_card_a,cae_card_a_addr_1,no_history
+301,2017-01-08T00:15:00Z,40.0,S,ce_card_a,,null_primary
+103,2017-01-08T00:00:00Z,30.0,H,ce_card_a,cae_card_a_addr_1,same_timestamp
+501,2017-01-08T00:10:00Z,60.0,C,ce_card_a,cae_card_a_addr_2,secondary_other_primary
+102,2017-01-08T00:00:00Z,20.0,C,ce_card_a,cae_card_a_addr_1,seven_day_boundary
+401,2017-01-08T00:20:00Z,50.0,W,,,null_both_entities
+106,2017-01-09T00:00:00Z,80.0,W,ce_card_a,cae_card_a_addr_1,twenty_four_hour_boundary
+105,2017-01-08T01:00:00Z,70.0,R,ce_card_a,cae_card_a_addr_1,one_hour_boundary
