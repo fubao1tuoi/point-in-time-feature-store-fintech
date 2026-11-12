@@ -1,0 +1,11 @@
+version: 1
+name: fraud_model_evaluation_v1
+model_training_config: configs/model_training.yaml
+model_bundle_dir: models/fraud_detection/v1
+training_dataset_glob: data/training/model_dataset/v1/model_split=*/*.parquet
+evaluated_splits: [validation, internal_test]
+recall_at_fpr: [0.001, 0.01, 0.05]
+precision_at_k: [100, 1000]
+precision_at_fraction: [0.01]
+output_root: reports/generated/model_evaluation
+write_predictions: true

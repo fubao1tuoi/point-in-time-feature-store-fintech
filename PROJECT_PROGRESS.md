@@ -161,27 +161,27 @@ Benchmark, tối ưu, tài liệu và demo
 
 ### Mốc 7 — Training dataset và baseline model
 
-- [ ] Chia train/validation/internal-test theo `TransactionDT`.
-- [ ] Fit preprocessing chỉ trên training period.
-- [ ] Xây training dataset từ offline PIT features.
-- [ ] Train raw-feature baseline.
-- [ ] Train raw + PIT-feature MVP nhận cả hai feature sets.
-- [ ] Đánh giá ROC-AUC, PR-AUC, Recall@FPR và Precision@K.
-- [ ] So sánh model theo toàn bộ dữ liệu và theo `entity_resolution_level`.
-- [ ] Xuất dataset/model manifest có thể tái lập.
+- [x] Chia train/validation/internal-test theo fixed `TransactionDT` boundaries.
+- [x] Fit raw-baseline preprocessing chỉ trên temporal training period.
+- [x] Xây versioned training dataset từ Silver và offline PIT features.
+- [x] Train raw-feature baseline.
+- [x] Train raw + PIT-feature MVP nhận cả hai feature sets.
+- [x] Đánh giá ROC-AUC, PR-AUC, Recall@FPR và Precision@K.
+- [x] So sánh model theo toàn bộ dữ liệu và theo `entity_resolution_level`.
+- [x] Xuất dataset/model manifest có thể tái lập.
 
 ### Mốc 8 — Leakage audit, tối ưu và hardening
 
-- [ ] Audit future aggregation, preprocessing và temporal overlap.
-- [ ] Kiểm thử null entity, skew, ties và late/future records.
-- [ ] Benchmark runtime và lượng dữ liệu scan trước tối ưu.
-- [ ] Áp dụng partition pruning và semi-join reduction.
-- [ ] Chứng minh output trước/sau tối ưu tương đương.
-- [ ] Hoàn thiện audit log và failure handling.
+- [x] Audit future aggregation, preprocessing và temporal overlap.
+- [x] Kiểm thử null entity, skew, ties và late/future records.
+- [x] Benchmark runtime và lượng dữ liệu scan trước tối ưu.
+- [x] Áp dụng partition pruning và semi-join reduction.
+- [x] Chứng minh output trước/sau tối ưu tương đương.
+- [x] Hoàn thiện audit log và failure handling.
 
 ### Mốc 9 — Tài liệu và demo cuối
 
-- [ ] Hoàn thiện README và lệnh chạy end-to-end.
+- [x] Hoàn thiện README và lệnh chạy end-to-end.
 - [ ] Hoàn thiện architecture, feature catalog và runbook.
 - [ ] Viết báo cáo kết quả correctness, model và performance.
 - [ ] Làm slide.
@@ -191,10 +191,10 @@ Benchmark, tối ưu, tài liệu và demo
 
 ## 4. Việc tiếp theo
 
-Tiếp tục **Mốc 7 — Training dataset và baseline model**, theo thứ tự:
+Tiếp tục **Mốc 9 — Tài liệu và demo cuối**, theo thứ tự:
 
-1. Chốt temporal train/validation/internal-test split.
-2. Xây training dataset bằng cách join Silver với offline PIT feature table v1.
+1. Hoàn thiện architecture, feature catalog và runbook.
+2. Viết báo cáo kết quả correctness, model và performance.
 
 Mốc 6 đã hoàn thành versioned/partitioned offline table, lineage manifest và idempotent
 daily backfill contract. Trước Mốc 7 cần materialize full Silver feature table v1.
@@ -217,5 +217,14 @@ daily backfill contract. Trước Mốc 7 cần materialize full Silver feature 
 | 2026-11-09 | Hoàn thành observation layer: một transaction thành một observation, `prediction_time = event_time`, có grain/time quality checks. | Tính primary `card_addr_*` features trên golden dataset. |
 | 2026-11-10 | Hoàn thành Mốc 5: tính đủ 20 PIT features, golden oracle, boundary/same-time, no-history, append-only invariance và deterministic-rerun tests. | Thiết kế versioned offline feature table và bounded backfill ở Mốc 6. |
 | 2026-11-10 | Hoàn thành Mốc 6: versioned daily Parquet, run manifest, source checksum, bounded backfill và idempotency/no-duplicate tests. | Materialize full feature table v1 rồi xây temporal training dataset ở Mốc 7. |
+| 2026-11-11 | Chốt temporal split v1 theo `TransactionDT`: 70% train, 15% validation, 15% internal test; full-data audit không overlap. | Fit preprocessing chỉ trên training period. |
+| 2026-11-11 | Fit raw-baseline preprocessing v1 trên train-only period; median/vocabulary không dùng validation/internal test. | Xây versioned training dataset từ Silver và offline PIT features. |
+| 2026-11-11 | Sửa UTC partition bug và migrate mixed legacy offline v1 thành 365 daily partitions sạch; 1.097.231 unique rows, không duplicate. | Xây versioned training dataset từ Silver và offline PIT features. |
+| 2026-11-11 | Materialize training dataset v1: 590.540 unique rows, 55 model features, 3 temporal partitions, không missing offline join/null model values. | Train raw-feature baseline. |
+| 2026-11-12 | Train CatBoost raw baseline và raw + PIT MVP trên cùng train/validation; validation AUC lần lượt 0,849364 và 0,860614, internal test chưa được dùng. | Đánh giá đầy đủ metric và so sánh theo entity resolution. |
+| 2026-11-12 | Đánh giá hai model trên validation/internal test bằng ROC-AUC, PR-AUC, Recall@FPR và Precision@K; PIT cải thiện internal-test ROC-AUC lên 0,829082 và PR-AUC lên 0,254277. | So sánh theo `entity_resolution_level`. |
+| 2026-11-12 | Hoàn thành Mốc 7: subgroup comparison và reproducibility manifest khóa checksum dataset, code/config, model và evaluation artifacts. | Bắt đầu Mốc 8 leakage audit và hardening. |
+| 2026-11-12 | Hoàn thành Mốc 8: 17 leakage checks, edge-case tests, bounded-backfill reduction 85,6%, output equivalence và durable failure audit log. | Bắt đầu Mốc 9 tài liệu và demo cuối. |
+| 2026-11-12 | Hoàn thiện README và PowerShell end-to-end runner có preflight, clean-workspace guard, 15 stages và fail-fast. | Hoàn thiện architecture, feature catalog và runbook. |
 
 Khi hoàn thành một mốc, thêm một dòng mới vào bảng này. Không xóa lịch sử cũ.

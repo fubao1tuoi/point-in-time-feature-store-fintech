@@ -35,6 +35,7 @@ data/bronze/*
 data/silver/*
 data/offline_store/*
 data/online_store/*
+data/training/*
 data/downloads/*
 
 # Keep directory placeholders
@@ -43,6 +44,7 @@ data/downloads/*
 !data/silver/.gitkeep
 !data/offline_store/.gitkeep
 !data/online_store/.gitkeep
+!data/training/.gitkeep
 !data/downloads/.gitkeep
 
 # Kaggle credentials

@@ -70,7 +70,9 @@ def _create_offline_table(
     feature_table_version: int,
     start_time: str | None,
     end_time: str | None,
-) -> None:
+    *,
+    optimize_history: bool = True,
+) -> dict[str, int | bool]:
     cutoff = ""
     if start_time is not None and end_time is not None:
         cutoff = (
@@ -82,17 +84,46 @@ def _create_offline_table(
         f"SELECT * FROM silver_transactions {cutoff}"
     )
     materialize_observations(connection, "selected_observation_source")
+    optimization_applied = optimize_history and start_time is not None
+    primary_history = "silver_transactions"
+    secondary_history = "silver_transactions"
+    if optimization_applied:
+        history_limit = (
+            "history.event_time <= "
+            "(SELECT MAX(prediction_time) FROM pit_observations)"
+        )
+        for table_name, entity_key in (
+            ("primary_history_source", primary.feature_set.entity_key),
+            ("secondary_history_source", secondary.feature_set.entity_key),
+        ):
+            entity = '"' + entity_key.replace('"', '""') + '"'
+            connection.execute(
+                f"""
+                CREATE OR REPLACE TEMP TABLE {table_name} AS
+                SELECT history.*
+                FROM silver_transactions AS history
+                SEMI JOIN (
+                    SELECT DISTINCT {entity}
+                    FROM pit_observations
+                    WHERE {entity} IS NOT NULL
+                ) AS selected_entities
+                  ON history.{entity} = selected_entities.{entity}
+                WHERE {history_limit}
+                """
+            )
+        primary_history = "primary_history_source"
+        secondary_history = "secondary_history_source"
     materialize_feature_view(
         connection,
         "pit_observations",
-        "silver_transactions",
+        primary_history,
         primary,
         output_table="primary_features",
     )
     materialize_feature_view(
         connection,
         "pit_observations",
-        "silver_transactions",
+        secondary_history,
         secondary,
         output_table="secondary_features",
     )
@@ -103,7 +134,7 @@ def _create_offline_table(
             observation.TransactionID,
             observation.event_time,
             observation.prediction_time,
-            CAST(observation.prediction_time AS DATE) AS observation_date,
+            CAST(timezone('UTC', observation.prediction_time) AS DATE) AS observation_date,
             primary_features.* EXCLUDE (TransactionID),
             secondary_features.* EXCLUDE (TransactionID),
             {feature_table_version}::INTEGER AS feature_table_version,
@@ -119,6 +150,17 @@ def _create_offline_table(
         ORDER BY observation.TransactionID
         """
     )
+    full_rows = int(connection.execute("SELECT COUNT(*) FROM silver_transactions").fetchone()[0])
+    primary_rows = int(connection.execute(f"SELECT COUNT(*) FROM {primary_history}").fetchone()[0])
+    secondary_rows = int(
+        connection.execute(f"SELECT COUNT(*) FROM {secondary_history}").fetchone()[0]
+    )
+    return {
+        "optimization_applied": optimization_applied,
+        "full_history_rows": full_rows,
+        "primary_history_candidate_rows": primary_rows,
+        "secondary_history_candidate_rows": secondary_rows,
+    }
 
 
 def _validate_cutoff(start_time: str | None, end_time: str | None) -> None:
@@ -220,6 +262,7 @@ def materialize_offline_feature_table(
     start_time: str | None = None,
     end_time: str | None = None,
     backfill: bool = False,
+    optimize_history: bool = True,
     connection: duckdb.DuckDBPyConnection | None = None,
 ) -> OfflineFeatureMetrics:
     """Build and atomically publish one immutable versioned Parquet feature table."""
@@ -254,13 +297,14 @@ def materialize_offline_feature_table(
         print("[1/4] validating feature registries and loading Silver source")
         _create_source_view(db, source_glob)
         print("[2/4] computing primary and secondary PIT feature views")
-        _create_offline_table(
+        optimization_stats = _create_offline_table(
             db,
             primary,
             secondary,
             feature_table_version,
             start_time,
             end_time,
+            optimize_history=optimize_history,
         )
 
         row_count, unique_ids, source_partition_count, min_date, max_date = db.execute(
@@ -375,6 +419,7 @@ def materialize_offline_feature_table(
                 ),
                 "semantic_fingerprint": semantic_fingerprint,
             },
+            "optimization": optimization_stats,
         }
         if backfill:
             _publish_backfill_partitions(staging_directory, final_directory, run_id)
@@ -421,6 +466,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--start-time")
     parser.add_argument("--end-time")
     parser.add_argument("--backfill", action="store_true")
+    parser.add_argument("--disable-history-optimization", action="store_true")
     return parser
 
 
@@ -435,6 +481,7 @@ def main(argv: list[str] | None = None) -> int:
         start_time=args.start_time,
         end_time=args.end_time,
         backfill=args.backfill,
+        optimize_history=not args.disable_history_optimization,
     )
     return 0
 

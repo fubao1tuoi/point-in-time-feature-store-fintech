@@ -1,0 +1,24 @@
+version: 1
+name: milestone_seven_release_v1
+evaluation_config: configs/model_evaluation.yaml
+evaluation_report: reports/generated/model_evaluation/v1/evaluation_report.json
+prediction_glob: reports/generated/model_evaluation/v1/predictions/*.parquet
+training_dataset_manifest_glob: data/training/model_dataset/v1/manifests/*.json
+model_manifest: models/fraud_detection/v1/model_manifest.json
+preprocessing_artifact: artifacts/preprocessing/v1/preprocessor.json
+tracked_contracts:
+  - pyproject.toml
+  - configs/training_split.yaml
+  - configs/preprocessing.yaml
+  - configs/training_dataset.yaml
+  - configs/model_training.yaml
+  - configs/model_evaluation.yaml
+  - configs/features/transaction_velocity_v1.yaml
+  - configs/features/transaction_velocity_card_v1.yaml
+tracked_implementations:
+  - src/pit_feature_store/temporal_split.py
+  - src/pit_feature_store/preprocessing.py
+  - src/pit_feature_store/training_dataset.py
+  - src/pit_feature_store/model_training.py
+  - src/pit_feature_store/model_evaluation.py
+output_root: reports/generated/milestone_seven

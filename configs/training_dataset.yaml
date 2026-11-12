@@ -1,0 +1,15 @@
+version: 1
+name: fraud_training_dataset_v1
+silver_source_glob: data/silver/transactions/dataset_split=train/**/*.parquet
+offline_feature_glob: data/offline_store/transaction_features/v1/observation_date=*/*.parquet
+offline_feature_table_version: 1
+temporal_split_config: configs/training_split.yaml
+preprocessing_artifact: artifacts/preprocessing/v1/preprocessor.json
+primary_feature_registry: configs/features/transaction_velocity_v1.yaml
+secondary_feature_registry: configs/features/transaction_velocity_card_v1.yaml
+output_root: data/training/model_dataset
+partition_column: model_split
+pit_null_policy:
+  zero_default_aggregations: [count, sum, count_distinct]
+  train_median_aggregations: [avg, max, time_since_previous]
+  add_missing_indicators: true

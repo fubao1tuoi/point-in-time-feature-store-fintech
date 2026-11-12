@@ -1265,7 +1265,7 @@ Chạy test:
 python -m pytest tests/point_in_time/test_offline_materialization.py -v
 ```
 
-Kết quả yêu cầu: `3 passed`. Cách chạy full Silver và theo dõi bốn stages được ghi tại
+Kết quả yêu cầu: `5 passed`. Cách chạy full Silver và theo dõi bốn stages được ghi tại
 [`pipelines/README.md`](../pipelines/README.md). Task này chưa tạo run manifest và chưa nhận
 bounded backfill time range; đó là các task kế tiếp của Mốc 6.
 
@@ -1282,7 +1282,7 @@ Implementation và tests:
 Offline table không còn là một file lớn. Pipeline derive:
 
 ```text
-observation_date := CAST(prediction_time AS DATE)
+observation_date := CAST(timezone('UTC', prediction_time) AS DATE)
 ```
 
 và ghi Hive-style partitions:
@@ -1295,7 +1295,8 @@ transaction_features/v1/
 ```
 
 `prediction_time` vẫn được giữ nguyên timestamp để tính PIT chính xác; `observation_date`
-chỉ là routing column cho storage. Partition theo ngày phù hợp vì training split, backfill
+chỉ là routing column cho storage. Timestamp được ép về UTC trước khi lấy date, không phụ
+thuộc timezone của máy chạy. Partition theo ngày phù hợp vì training split, backfill
 và audit đều chủ yếu chọn dữ liệu theo khoảng thời gian. Query chỉ cần một vài ngày có thể
 prune các directory khác, giảm I/O so với đọc một file chứa toàn bộ lịch sử.
 
@@ -1316,8 +1317,29 @@ Chạy:
 python -m pytest tests/point_in_time/test_offline_materialization.py -v
 ```
 
-Kết quả yêu cầu: `3 passed`. Full-data command và cách theo dõi vẫn giữ nguyên trong
+Kết quả yêu cầu: `5 passed`. Full-data command và cách theo dõi vẫn giữ nguyên trong
 [`pipelines/README.md`](../pipelines/README.md).
+
+#### UTC partition bug và legacy migration
+
+Một backfill UTC-day từng tạo hai partitions vì phiên bản cũ dùng
+`CAST(TIMESTAMPTZ AS DATE)`, chịu ảnh hưởng timezone Asia/Bangkok. Regression test mới đặt
+event ở `23:30Z` trong DuckDB session Bangkok và bắt buộc output vẫn thuộc UTC date cũ.
+
+Full legacy `v1/features.parquet` được migrate, không tính lại 20 features, sang clean UTC
+daily layout bằng staging + atomic swap. Kết quả thực tế:
+
+```text
+rows                      = 1.097.231
+unique TransactionID      = 1.097.231
+duplicate TransactionID   = 0
+UTC daily partitions      = 365
+labeled Silver join rows  = 590.540
+missing offline features  = 0
+```
+
+Mixed legacy file, hai backfill partitions cũ và manifest thử nghiệm đã được loại sau khi
+reconciliation pass. Migration manifest mới lưu source SHA-256 và quality counts.
 
 ### 8.3. Run manifest và lineage
 
@@ -1371,8 +1393,159 @@ Chạy:
 python -m pytest tests/point_in_time/test_offline_materialization.py -v
 ```
 
-Kết quả yêu cầu: `3 passed`. Với các bằng chứng này, toàn bộ Mốc 6 hoàn thành; full Silver
-materialization vẫn là một runtime operation phải chạy trước khi xây training dataset Mốc 7.
+Kết quả yêu cầu: `5 passed`. Full Silver feature artifact đã được materialize và migrate
+thành clean UTC daily partitions, sẵn sàng làm input cho training dataset Mốc 7.
+
+## 9. Mốc 7 — Training dataset và baseline model
+
+**Trạng thái:** Đang thực hiện.
+
+### 9.1. Temporal train/validation/internal-test split
+
+**Trạng thái:** Hoàn thành ngày 2026-11-11.
+
+Task dùng labeled Kaggle train rows và chia theo `TransactionDT`, không dùng random split.
+Boundary ban đầu được lấy tại quantile 70% và 85%, sau đó cố định trong
+`configs/training_split.yaml` để rerun hoặc data append không làm transaction cũ đổi split.
+
+```text
+train         : TransactionDT < 10.454.400
+validation    : 10.454.400 <= TransactionDT < 13.132.800
+internal_test : TransactionDT >= 13.132.800
+```
+
+Full Silver audit cho kết quả:
+
+| Split | Rows | Proportion | Fraud count | Fraud rate | TransactionDT range |
+|---|---:|---:|---:|---:|---:|
+| Train | 414.542 | 70,20% | 14.600 | 3,5220% | 86.400–10.454.392 |
+| Validation | 86.672 | 14,68% | 2.949 | 3,4025% | 10.454.414–13.132.788 |
+| Internal test | 89.326 | 15,13% | 3.114 | 3,4861% | 13.132.810–15.811.131 |
+
+Internal test được giữ riêng để đánh giá cuối; validation dùng chọn hyperparameter và
+threshold. Preprocessor ở task kế tiếp chỉ được fit bằng 414.542 train rows. Kaggle test
+không dùng làm internal test vì thiếu public label.
+
+Validator kiểm tra config, proportions tổng bằng 1, boundary order và contract cột. Audit
+trên full data kiểm tra null/duplicate/label, reconcile 590.540 rows và temporal ordering.
+Kết quả chứng minh:
+
+```text
+max(train TransactionDT) < min(validation TransactionDT)
+max(validation TransactionDT) < min(internal_test TransactionDT)
+```
+
+Sau khi review storage theo daily `observation_date`, hai quantile boundaries được căn về
+UTC midnight gần nhất. Tỷ lệ thực tế trở thành 70,20% / 14,68% / 15,13%. Config và validator
+enforce `boundary_alignment_seconds = 86400`, nên thay đổi lệch khỏi 00:00 UTC sẽ fail.
+
+Chạy:
+
+```powershell
+python pipelines/analyze_temporal_split.py
+python -m pytest tests/unit/test_temporal_split.py -v
+```
+
+Full-data report nằm tại `reports/generated/temporal_split_report.json` (runtime artifact,
+không commit). Policy và implementation:
+
+- [`temporal_split_policy.md`](temporal_split_policy.md)
+- [`training_split.yaml`](../configs/training_split.yaml)
+- [`temporal_split.py`](../src/pit_feature_store/temporal_split.py)
+- [`test_temporal_split.py`](../tests/unit/test_temporal_split.py)
+
+### 9.2. Fit preprocessing chỉ trên temporal train period
+
+**Trạng thái:** Hoàn thành ngày 2026-11-11.
+
+Raw-baseline preprocessing v1 được fit bằng điều kiện `TransactionDT < 10.454.400`, tương
+ứng đúng 414.542 train rows. Validation và internal test chỉ dùng để audit unknown-category
+behavior; report ghi `validation_or_test_rows_used_for_fit = 0`.
+
+Numeric `TransactionAmt` dùng train median `68.95`. Mười bốn categorical features dùng
+fixed vocabulary gồm hai reserved tokens `__MISSING__`, `__UNKNOWN__` và những category có
+train frequency tối thiểu 20. Category hiếm hoặc chỉ xuất hiện trong tương lai không được
+thêm vào vocabulary.
+
+Ví dụ full-data fit giữ 2.036 giá trị `card1` và 241 `DeviceInfo`; validation có những giá
+trị mới/hiếm nên được map về `__UNKNOWN__`. Đây là hành vi mong muốn, không phải lỗi.
+
+Artifact lưu fit range, numeric statistics, categorical vocabulary và semantic SHA-256:
+
+```text
+artifacts/preprocessing/v1/preprocessor.json
+```
+
+Audit report:
+
+```text
+reports/generated/preprocessing_fit_report.json
+```
+
+Hai file là runtime artifacts bị ignore. Config `configs/preprocessing.yaml`, implementation
+và tests được version control để có thể tái tạo artifact. Semantic hash bỏ timestamp nên hai
+lần fit cùng source/config phải có cùng hash.
+
+Automated test cố ý đặt validation amount `999` và validation-only category. Train amount
+`1, 3, null` vẫn cho median `2`, vocabulary chỉ giữ train category `A`, và validation-only
+category trở thành unknown. Điều này chứng minh code không chỉ ghi policy trong tài liệu mà
+thực sự enforce train-only fit.
+
+Chạy:
+
+```powershell
+python pipelines/fit_preprocessor.py
+python -m pytest tests/unit/test_preprocessing.py -v
+```
+
+Policy chi tiết: [`preprocessing_policy.md`](preprocessing_policy.md).
+
+### 9.3. Xây versioned training dataset từ offline PIT features
+
+**Trạng thái:** Hoàn thành ngày 2026-11-11.
+
+Pipeline đọc 590.540 labeled Silver transactions và left join clean offline feature store
+v1 theo `TransactionID`. Left join được dùng để audit; publish bị chặn nếu bất kỳ row nào
+thiếu offline feature. Full run cho `missing_offline_feature_rows = 0`, output rows và unique
+IDs đều bằng 590.540.
+
+Sau join, mỗi row được gắn `model_split` bằng fixed UTC-midnight boundaries. Raw numeric và
+categorical fields được transform bằng preprocessing artifact v1 đã khóa. Hai mươi PIT
+features dùng aggregation-aware null policy: count/sum/distinct về 0; avg/max/recency dùng
+train-only median. Hai mươi missing indicators giữ lại tín hiệu “giá trị từng bị thiếu”.
+
+Output có 55 model features và 64 cột tổng cộng, materialize thành ba model-split
+partitions. Kết quả:
+
+```text
+train rows                   = 414.542
+validation rows              = 86.672
+internal-test rows           = 89.326
+total/unique rows            = 590.540 / 590.540
+missing offline rows         = 0
+null model-feature values    = 0
+duplicate IDs                = 0
+```
+
+Manifest lưu source/version lineage, preprocessing semantic SHA-256, split metrics, PIT
+fill values, output semantic fingerprint và dataset SHA-256. Output version immutable tại:
+
+```text
+data/training/model_dataset/v1/
+```
+
+Integration tests còn cố ý bỏ một offline row và xác nhận pipeline fail trước publish. Một
+fixture khác đặt PIT value `999` ở validation nhưng train median vẫn bằng `2`, chứng minh
+nullable PIT preprocessing không học từ tương lai.
+
+Chạy:
+
+```powershell
+python pipelines/build_training_dataset.py
+python -m pytest tests/unit/test_training_dataset.py -v
+```
+
+Tài liệu schema và giải thích: [`training_dataset.md`](training_dataset.md).
 - [`GOLDEN_EXPECTED_REVIEW.md`](../tests/point_in_time/GOLDEN_EXPECTED_REVIEW.md)
 - Structural/manual assertions trong
   [`test_golden_fixture.py`](../tests/point_in_time/test_golden_fixture.py)
@@ -1547,3 +1720,109 @@ Implementation và test:
 
 Sau mỗi bước, bổ sung vào tài liệu này khi code/test hoặc quyết định tương ứng đã được
 xác nhận.
+
+### 9.4–9.5. Train raw baseline và raw + PIT MVP
+
+Hai model CatBoost được train bằng cùng temporal dataset, seed và hyperparameters để chênh
+lệch không đến từ cách chia dữ liệu hay thuật toán:
+
+| Model | Thành phần đầu vào | Số feature |
+|---|---|---:|
+| `raw_baseline` | 15 raw features | 15 |
+| `raw_plus_pit_mvp` | 15 raw + 20 PIT + 20 missing indicators | 55 |
+
+Train có 414.542 rows. Validation có 86.672 rows và chỉ được dùng cho early stopping.
+Internal test không được nạp vào memory lúc train (`internal_test_used=false`) để giữ một
+tập đánh giá cuối chưa tác động đến lựa chọn iteration.
+
+CatBoost được chọn vì 14/15 raw features là categorical và một số cột có cardinality cao.
+Model xử lý category trực tiếp, tránh tạo ma trận one-hot rất rộng. Hai variant đều dùng
+seed 42, tối đa 300 iterations, depth 7, learning rate 0,08 và class weights cân bằng.
+
+Kết quả validation ban đầu:
+
+```text
+raw_baseline     best iteration = 140, ROC-AUC = 0.849364
+raw_plus_pit_mvp best iteration = 296, ROC-AUC = 0.860614
+delta AUC                                  = +0.011250
+```
+
+Kết quả này cho thấy PIT features có thêm tín hiệu trên validation, nhưng chưa phải kết luận
+cuối: task đánh giá tiếp theo sẽ tính đầy đủ ROC-AUC, PR-AUC, Recall@FPR, Precision@K và mở
+internal test đúng một cách có kiểm soát.
+
+Artifact local nằm tại `models/fraud_detection/v1/`; manifest lưu feature list, seed,
+hyperparameters, best scores và SHA-256 của hai file `.cbm`. Giải thích và lệnh chạy đầy đủ
+nằm tại `docs/model_training.md`.
+
+### 9.6. Đánh giá ranking quality
+
+Pipeline evaluation xác minh SHA-256 của model trước khi load, sau đó chấm `validation` và
+`internal_test`. Bốn nhóm metric được tính từ cùng fraud probability:
+
+- ROC-AUC cho ranking tổng quát;
+- PR-AUC theo Average Precision để phản ánh positive class hiếm;
+- Recall tại FPR tối đa 0,1%, 1% và 5%;
+- Precision trong top 100, top 1.000 và top 1% score cao nhất.
+
+Internal-test results của raw → raw+PIT:
+
+```text
+ROC-AUC : 0.815880 -> 0.829082
+PR-AUC  : 0.236695 -> 0.254277
+P@100   : 74%      -> 83%
+P@1000  : 43.7%    -> 45.3%
+P@top1% : 44.74%   -> 46.87%
+```
+
+Ở operating point FPR ≤ 5%, raw có recall 41,49% còn PIT có 41,07%; log ghi rõ ngoại lệ này
+để tránh diễn giải rằng PIT luôn tốt hơn tại mọi threshold. Report đầy đủ và predictions audit
+nằm trong `reports/generated/model_evaluation/v1/`; tài liệu đọc tại
+`docs/model_evaluation.md`.
+
+### 9.7. Subgroup comparison và reproducibility release
+
+Prediction được chia theo `entity_resolution_level_group` nhưng giữ nguyên hai model và
+threshold-independent metrics. Trên internal test, primary `card_address` hưởng lợi rõ từ PIT:
+
+```text
+ROC-AUC: 0.757890 -> 0.782982
+PR-AUC : 0.166981 -> 0.194095
+```
+
+Fallback `card_only` có ROC-AUC giảm nhẹ `0.747069 -> 0.744806`, trong khi PR-AUC tăng
+`0.324159 -> 0.327492`. Nhóm fallback có fraud rate 13,74% so với 2,28% ở primary và entity
+key coarse hơn; kết quả được giữ nguyên để audit ở Mốc 8, không tuning lại theo internal test.
+
+Release `reports/generated/milestone_seven/v1/` chứa comparison JSON và reproducibility
+manifest. Manifest nối training dataset fingerprint với preprocessing, registries, code,
+model checksums, evaluation report, prediction checksums và package versions. Nếu một artifact
+bị sửa, SHA-256 sẽ không còn khớp và release không thể được xem là cùng experiment.
+
+## 10. Mốc 8 — Leakage audit, tối ưu và hardening
+
+Hardening audit khóa 17 invariants cho PIT cutoff, label exclusion, train-only preprocessing,
+temporal boundaries, row uniqueness và PIT join completeness. Edge tests bổ sung null entity,
+entity skew 201 events, same-time tie, late arrival và future-event invariance.
+
+Bounded backfill hiện tạo observation theo time range, cap history ở maximum prediction time
+và semi-join riêng theo primary/secondary entities của batch. Controlled benchmark giảm
+logical history candidates từ 10.000 xuống 1.440 (85,6%). Micro runtime tăng từ 0,114 lên
+0,179 giây vì overhead materialization; tài liệu ghi rõ đây là scan-volume optimization,
+không tuyên bố runtime speedup trên input nhỏ.
+
+Baseline và optimized output có `EXCEPT ALL = 0` và cùng semantic fingerprint. Mỗi stage ghi
+append-only JSONL audit event; failed runs không publish staging và giữ log trong `failures/`.
+Report đầy đủ nằm tại `docs/hardening_report.md`.
+
+## 11. Mốc 9.1 — README và end-to-end command
+
+README được cập nhật từ tài liệu khởi tạo thành entry point đầy đủ cho người clone project:
+kiến trúc, setup `.venv`, raw-data placement, 14 pipeline steps, output locations, immutable
+version policy, bounded backfill, correctness rules và tài liệu liên quan.
+
+`scripts/run_end_to_end.ps1` orchestration 15 stages gồm cả pytest và Ruff. Script dùng Python
+trong project `.venv`, kiểm tra đủ bốn raw CSV, dừng nếu canonical/versioned output đã tồn tại,
+và fail ngay khi bất kỳ child process trả exit code khác 0. Script không tự xóa artifact và
+không được chạy trên workspace hiện tại đã có v1. Theo yêu cầu, runner chỉ được viết và kiểm
+tra cú pháp tĩnh ở bước này, không thực thi lại pipeline/model.

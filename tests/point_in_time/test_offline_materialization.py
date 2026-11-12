@@ -8,6 +8,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from pit_feature_store.offline_migration import migrate_legacy_offline_store
 from pit_feature_store.offline_store import (
     OfflineMaterializationError,
     materialize_offline_feature_table,
@@ -189,3 +190,79 @@ def test_backfill_is_idempotent_and_replaces_partitions_without_duplicates(
     assert len(list((output_root / "v1" / "manifests").glob("*.json"))) == 3
     assert not list(output_root.glob(".staging_*"))
     assert not list(output_root.glob(".backup_*"))
+
+
+def test_observation_date_is_utc_even_when_duckdb_session_is_bangkok(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "late_utc.parquet"
+    output_root = tmp_path / "offline" / "transaction_features"
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone='Asia/Bangkok'")
+    connection.execute(
+        f"""
+        COPY (
+            SELECT 1::BIGINT AS TransactionID,
+                   TIMESTAMPTZ '2017-01-08 23:30:00+00' AS event_time,
+                   10.0::DOUBLE AS TransactionAmt,
+                   'W'::VARCHAR AS ProductCD,
+                   'card'::VARCHAR AS card_entity_id,
+                   'card_addr'::VARCHAR AS card_address_entity_id
+        ) TO '{source.as_posix()}' (FORMAT PARQUET)
+        """
+    )
+
+    metrics = materialize_offline_feature_table(
+        source,
+        output_root,
+        PRIMARY,
+        SECONDARY,
+        feature_table_version=1,
+        connection=connection,
+    )
+    connection.close()
+
+    assert (metrics.output_path / "observation_date=2017-01-08").is_dir()
+    assert not (metrics.output_path / "observation_date=2017-01-09").exists()
+
+
+def test_migration_replaces_mixed_legacy_layout_with_clean_utc_partitions(
+    tmp_path: Path,
+) -> None:
+    version = tmp_path / "transaction_features" / "v1"
+    version.mkdir(parents=True)
+    legacy = version / "features.parquet"
+    obsolete_partition = version / "observation_date=2017-01-09"
+    obsolete_partition.mkdir()
+    (version / "manifests").mkdir()
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone='Asia/Bangkok'")
+    connection.execute(
+        f"""
+        COPY (
+            SELECT * FROM (VALUES
+                (1, TIMESTAMPTZ '2017-01-08 23:30:00+00', 1),
+                (2, TIMESTAMPTZ '2017-01-09 00:30:00+00', 1)
+            ) AS rows(TransactionID, prediction_time, feature_table_version)
+        ) TO '{legacy.as_posix()}' (FORMAT PARQUET)
+        """
+    )
+    connection.execute(
+        f"COPY (SELECT 999 AS TransactionID) TO "
+        f"'{(obsolete_partition / 'part_0.parquet').as_posix()}' (FORMAT PARQUET)"
+    )
+
+    manifest = migrate_legacy_offline_store(
+        version,
+        feature_table_version=1,
+        connection=connection,
+    )
+    connection.close()
+
+    assert not (version / "features.parquet").exists()
+    assert (version / "observation_date=2017-01-08").is_dir()
+    assert (version / "observation_date=2017-01-09").is_dir()
+    assert manifest["quality"]["row_count"] == 2
+    assert manifest["quality"]["unique_transaction_ids"] == 2
+    assert manifest["quality"]["duplicate_transaction_ids"] == 0
+    assert len(list((version / "manifests").glob("*.json"))) == 1

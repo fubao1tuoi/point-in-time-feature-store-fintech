@@ -1,0 +1,19 @@
+version: 1
+name: ieee_cis_temporal_split_v1
+source_split: train
+time_column: TransactionDT
+observation_id: TransactionID
+label_column: isFraud
+strategy: fixed_transaction_dt_boundaries
+boundary_policy: start_inclusive_end_exclusive
+boundary_alignment_seconds: 86400
+target_proportions:
+  train: 0.70
+  validation: 0.15
+  internal_test: 0.15
+boundaries:
+  validation_start_transaction_dt: 10454400
+  internal_test_start_transaction_dt: 13132800
+synthetic_event_time_reference:
+  validation_start: "2017-05-02T00:00:00Z"
+  internal_test_start: "2017-06-02T00:00:00Z"

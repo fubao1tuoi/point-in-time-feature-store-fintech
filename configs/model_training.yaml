@@ -1,0 +1,30 @@
+version: 1
+name: fraud_baseline_models_v1
+training_dataset_glob: data/training/model_dataset/v1/model_split=*/*.parquet
+training_dataset_version: 1
+training_dataset_config: configs/training_dataset.yaml
+preprocessing_artifact: artifacts/preprocessing/v1/preprocessor.json
+primary_feature_registry: configs/features/transaction_velocity_v1.yaml
+secondary_feature_registry: configs/features/transaction_velocity_card_v1.yaml
+output_root: models/fraud_detection
+random_seed: 42
+variants:
+  - name: raw_baseline
+    include_raw_features: true
+    include_pit_features: false
+    include_pit_missing_indicators: false
+  - name: raw_plus_pit_mvp
+    include_raw_features: true
+    include_pit_features: true
+    include_pit_missing_indicators: true
+catboost:
+  iterations: 300
+  learning_rate: 0.08
+  depth: 7
+  l2_leaf_reg: 5.0
+  loss_function: Logloss
+  eval_metric: AUC
+  auto_class_weights: Balanced
+  early_stopping_rounds: 40
+  thread_count: -1
+  verbose: 25

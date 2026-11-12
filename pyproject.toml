@@ -9,11 +9,14 @@ description = "Point-in-time correct feature store for fraud detection using IEE
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "catboost>=1.2,<2",
     "duckdb>=1.1,<2",
     "pydantic>=2.7,<3",
     "pydantic-settings>=2.2,<3",
     "pyarrow>=16,<20",
+    "pytz>=2024.1",
     "pyyaml>=6,<7",
+    "scikit-learn>=1.5,<2",
 ]
 
 [project.scripts]
@@ -23,6 +26,14 @@ ingest-bronze = "pit_feature_store.bronze:main"
 build-silver = "pit_feature_store.silver:main"
 validate-feature-registry = "pit_feature_store.feature_registry:main"
 materialize-offline-features = "pit_feature_store.offline_store:main"
+analyze-temporal-split = "pit_feature_store.temporal_split:main"
+fit-preprocessor = "pit_feature_store.preprocessing:main"
+migrate-offline-store = "pit_feature_store.offline_migration:main"
+build-training-dataset = "pit_feature_store.training_dataset:main"
+train-baseline-models = "pit_feature_store.model_training:main"
+evaluate-baseline-models = "pit_feature_store.model_evaluation:main"
+complete-milestone-seven = "pit_feature_store.milestone_seven:main"
+run-hardening-audit = "pit_feature_store.hardening:main"
 
 [project.optional-dependencies]
 dev = [

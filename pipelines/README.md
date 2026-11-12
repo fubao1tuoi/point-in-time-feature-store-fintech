@@ -218,8 +218,9 @@ data/offline_store/transaction_features/v1/
   observation_date=YYYY-MM-DD/part_0.parquet
 ```
 
-`observation_date = CAST(prediction_time AS DATE)`. Khi đọc một time range, DuckDB có thể
-prune các thư mục ngày không liên quan thay vì scan toàn bộ feature table.
+`observation_date = CAST(timezone('UTC', prediction_time) AS DATE)`. Việc ép UTC trước khi
+lấy ngày ngăn timezone máy chạy làm một UTC day bị tách thành hai partitions. Khi đọc một
+time range, DuckDB có thể prune các thư mục ngày không liên quan.
 
 Một version là immutable. Nếu `v1` đã tồn tại, command dừng thay vì ghi đè. Khi feature
 definition thay đổi, tăng `--feature-table-version`. Partition, run manifest và bounded
@@ -237,7 +238,7 @@ Chạy test nhỏ trước khi chạy full Silver:
 python -m pytest tests/point_in_time/test_offline_materialization.py -v
 ```
 
-Kết quả yêu cầu là `3 passed`.
+Kết quả yêu cầu là `5 passed`.
 
 ### Daily backfill
 
@@ -272,5 +273,204 @@ Test initial materialization, manifest và chạy backfill hai lần:
 python -m pytest tests/point_in_time/test_offline_materialization.py -v
 ```
 
-Kết quả hiện tại phải là `3 passed`.
+Kết quả hiện tại phải là `5 passed`.
+
+### Legacy offline-store migration
+
+Nếu một project cũ còn layout `v1/features.parquet`, migrate sang UTC daily partitions mà
+không tính lại features:
+
+```powershell
+python pipelines/migrate_offline_store.py `
+  --version-directory data/offline_store/transaction_features/v1 `
+  --feature-table-version 1
+```
+
+Migration ghi staging, reconcile rows/unique IDs/version, rồi atomic-swap toàn bộ version
+directory. Chỉ khi có `[offline-migration] success` thì legacy file và mixed backfill
+partitions mới bị loại. Manifest migration được giữ trong `v1/manifests/`.
+
+## Temporal model split audit
+
+Chính sách cố định chia labeled train transactions theo `TransactionDT`, tuyệt đối không
+random split:
+
+```text
+train         : TransactionDT < 10454400
+validation    : 10454400 <= TransactionDT < 13132800
+internal_test : TransactionDT >= 13132800
+```
+
+Chạy full-data audit:
+
+```powershell
+python pipelines/analyze_temporal_split.py
+```
+
+Theo dõi ba dòng `[train]`, `[validation]`, `[internal_test]`, sau đó phải có:
+
+```text
+[temporal-split] success: report=reports\generated\temporal_split_report.json
+```
+
+Report chứa row proportion, `TransactionDT` range, fraud count/rate và quality checks.
+Policy giải thích tại `docs/temporal_split_policy.md`; boundary/config machine-readable tại
+`configs/training_split.yaml`.
+
+## Train-only preprocessing fit
+
+Fit raw-baseline median và categorical vocabulary chỉ bằng temporal train period:
+
+```powershell
+python pipelines/fit_preprocessor.py
+```
+
+Theo dõi output:
+
+```text
+[preprocessing] config=fraud_baseline_preprocessor_v1 v1
+[fit] rows=414542, TransactionDT < 10454400
+[preprocessing] semantic_sha256=...
+[preprocessing] success: artifact=..., report=...
+```
+
+Artifact local nằm tại `artifacts/preprocessing/v1/preprocessor.json`; audit report tại
+`reports/generated/preprocessing_fit_report.json`. Cả hai không commit. Validation và
+internal test chỉ được audit/transform: chúng không được tính median, không thêm category
+vào vocabulary. Policy đầy đủ nằm tại `docs/preprocessing_policy.md`.
+
+Chạy test chứng minh leakage guard:
+
+```powershell
+python -m pytest tests/unit/test_preprocessing.py -v
+```
+
+Test cố ý đặt amount/category khác biệt trong validation và xác nhận chúng không ảnh hưởng
+train median/vocabulary. Kết quả yêu cầu là `3 passed`.
+
+## Model training dataset
+
+Join labeled Silver với offline PIT feature table, áp dụng train-only preprocessing và ghi
+dataset partition theo `model_split`:
+
+```powershell
+python pipelines/build_training_dataset.py
+```
+
+Theo dõi:
+
+```text
+[1/5] validating sources, versions and one-to-one join
+[2/5] fitting nullable PIT medians on temporal train only
+[3/5] applying locked raw preprocessing and PIT null policy
+[4/5] writing and reconciling partitioned Parquet
+[5/5] publishing immutable training dataset version
+[training-dataset] success: data\training\model_dataset\v1
+```
+
+Output:
+
+```text
+data/training/model_dataset/v1/
+  model_split=train/
+  model_split=validation/
+  model_split=internal_test/
+  manifests/
+```
+
+Stage 1 fail nếu join thiếu feature hoặc nhân dòng. Stage 2 chỉ dùng train rows. Stage 3
+khóa categorical vocabulary, impute PIT null và thêm missing indicators. Chỉ coi hoàn tất
+khi có dòng `[training-dataset] success`. Chi tiết schema, medians và quality metrics nằm
+tại `docs/training_dataset.md`.
+
+Chạy integration tests:
+
+```powershell
+python -m pytest tests/unit/test_training_dataset.py -v
+```
+
+Kết quả yêu cầu là `2 passed`.
+
+## Train raw baseline và raw + PIT MVP
+
+```powershell
+cd "D:\AITC VinUni\Fintech project"
+& ".\.venv\Scripts\Activate.ps1"
+python -c "import sys; print(sys.executable)"
+python -m pip install -e ".[dev]"
+python pipelines/train_baseline_models.py
+```
+
+Pipeline train tuần tự:
+
+1. `raw_baseline`: 15 raw features;
+2. `raw_plus_pit_mvp`: 15 raw + 20 PIT + 20 PIT missing indicators.
+
+Theo dõi AUC được in mỗi 25 iterations. Internal test không được đọc trong run này. Thành
+công khi thấy:
+
+```text
+[model-training] success: models\fraud_detection\v1
+```
+
+Model bundle là immutable. Chi tiết contract, kết quả và artifact nằm tại
+`docs/model_training.md`.
+
+## Đánh giá model
+
+```powershell
+cd "D:\AITC VinUni\Fintech project"
+& ".\.venv\Scripts\Activate.ps1"
+python -c "import sys; print(sys.executable)"
+python -m pip install -e ".[dev]"
+python pipelines/evaluate_baseline_models.py
+```
+
+Pipeline kiểm tra model checksum, chấm cả hai model trên validation và internal test, sau đó
+ghi metric JSON cùng prediction Parquet. Theo dõi đến khi thấy:
+
+```text
+[model-evaluation] success: reports\generated\model_evaluation\v1
+```
+
+Chi tiết định nghĩa metric và kết quả nằm tại `docs/model_evaluation.md`.
+
+## Hoàn tất Mốc 7
+
+So sánh theo `entity_resolution_level` và xuất reproducibility manifest:
+
+```powershell
+cd "D:\AITC VinUni\Fintech project"
+& ".\.venv\Scripts\Activate.ps1"
+python -c "import sys; print(sys.executable)"
+python -m pip install -e ".[dev]"
+python pipelines/complete_milestone_seven.py
+```
+
+Thành công khi thấy:
+
+```text
+[milestone-7] success: reports\generated\milestone_seven\v1
+```
+
+Đọc kết quả tại `docs/milestone_seven_summary.md`.
+
+## Mốc 8 hardening audit
+
+```powershell
+cd "D:\AITC VinUni\Fintech project"
+& ".\.venv\Scripts\Activate.ps1"
+python -c "import sys; print(sys.executable)"
+python -m pip install -e ".[dev]"
+python pipelines/run_hardening_audit.py
+```
+
+Pipeline audit leakage contracts, benchmark baseline/optimized backfill, kiểm tra semantic
+equivalence và ghi JSONL audit log. Thành công khi thấy:
+
+```text
+[hardening] success: reports\generated\hardening\v1
+```
+
+Chi tiết và cách diễn giải benchmark nằm tại `docs/hardening_report.md`.
 

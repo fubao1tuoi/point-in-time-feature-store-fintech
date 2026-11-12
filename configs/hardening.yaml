@@ -1,0 +1,14 @@
+version: 1
+name: pit_pipeline_hardening_v1
+temporal_split_config: configs/training_split.yaml
+preprocessing_artifact: artifacts/preprocessing/v1/preprocessor.json
+training_dataset_manifest_glob: data/training/model_dataset/v1/manifests/*.json
+primary_feature_registry: configs/features/transaction_velocity_v1.yaml
+secondary_feature_registry: configs/features/transaction_velocity_card_v1.yaml
+output_root: reports/generated/hardening
+benchmark:
+  source_rows: 5000
+  entity_count: 1000
+  seconds_between_events: 600
+  start_time: "2017-01-31T00:00:00Z"
+  end_time: "2017-02-01T00:00:00Z"
