@@ -1826,3 +1826,12 @@ trong project `.venv`, kiểm tra đủ bốn raw CSV, dừng nếu canonical/ve
 và fail ngay khi bất kỳ child process trả exit code khác 0. Script không tự xóa artifact và
 không được chạy trên workspace hiện tại đã có v1. Theo yêu cầu, runner chỉ được viết và kiểm
 tra cú pháp tĩnh ở bước này, không thực thi lại pipeline/model.
+
+## 12. Mốc 9 — Báo cáo tổng quan
+
+`docs/BAO_CAO_TONG_QUAN_POINT_IN_TIME_FEATURE_STORE.md` tổng hợp toàn bộ đề tài bằng tiếng
+Việt: bối cảnh, mục tiêu, dataset, PIT policy, kiến trúc, surrogate entities, 20 feature
+outputs, golden tests, offline store/backfill, temporal training, model results, reproducibility,
+hardening, sản phẩm đầu ra, hạn chế và kế hoạch tiếp theo. Báo cáo phân biệt rõ kết quả đã được
+kiểm chứng trong workspace phát triển với clean-clone dry-run đang thực hiện, tránh kết luận
+repository đã tái tạo hoàn tất trước khi run ở môi trường sạch kết thúc.

@@ -77,7 +77,7 @@ function Close-Lists {
 for ($index = 0; $index -lt $lines.Count; $index++) {
     $line = $lines[$index]
 
-    if ($line.Trim() -eq '```text' -or $line.Trim() -eq '```') {
+    if ($line.Trim() -match '^```(?:[A-Za-z0-9_+.-]+)?\s*$') {
         Close-Paragraph
         Close-Lists
         if ($inCode) {
