@@ -118,11 +118,12 @@ model hoặc report v1 đã tồn tại; script không xóa và không ghi đè 
 Theo dõi stage dạng:
 
 ```text
-[01/14] Dataset profiling
-[02/14] Entity-key analysis
+[01/16] Dataset profiling
+[02/16] Entity-key analysis
 ...
-[14/15] Full test suite
-[15/15] Ruff lint
+[14/16] Future-event invariance demo
+[15/16] Full test suite
+[16/16] Ruff lint
 [end-to-end] success
 ```
 
@@ -258,6 +259,8 @@ reports/     Generated reports, benchmarks và audit evidence
 
 ## 10. Tài liệu liên quan
 
+- [Architecture](docs/architecture.md)
+- [Runbook vận hành](docs/runbook.md)
 - [Implementation log](docs/IMPLEMENTATION_LOG.md)
 - [PIT time policy](docs/pit_time_policy.md)
 - [Feature catalog](docs/feature_catalog.md)
@@ -267,6 +270,13 @@ reports/     Generated reports, benchmarks và audit evidence
 - [Mốc 7 summary](docs/milestone_seven_summary.md)
 - [Mốc 8 hardening report](docs/hardening_report.md)
 - [Pipeline command reference](pipelines/README.md)
+- [Slide trình bày](docs/SLIDES_POINT_IN_TIME_FEATURE_STORE.pdf)
+
+Demo trực tiếp quy tắc “future event không đổi past features”:
+
+```powershell
+python pipelines/demo_future_event_invariance.py
+```
 
 ## 11. Git và dữ liệu nhạy cảm
 

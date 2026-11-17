@@ -182,22 +182,17 @@ Benchmark, tối ưu, tài liệu và demo
 ### Mốc 9 — Tài liệu và demo cuối
 
 - [x] Hoàn thiện README và lệnh chạy end-to-end.
-- [ ] Hoàn thiện architecture, feature catalog và runbook.
+- [x] Hoàn thiện architecture, feature catalog và runbook.
 - [x] Viết báo cáo kết quả correctness, model và performance.
-- [ ] Làm slide.
-- [ ] Chuẩn bị demo future event bị loại khỏi past features.
-- [ ] Dry-run từ môi trường sạch.
-- [ ] Dọn repo và tạo release/tag cuối.
+- [x] Làm slide.
+- [x] Chuẩn bị demo future event bị loại khỏi past features.
+- [x] Dry-run từ môi trường sạch.
+- [x] Dọn repo và tạo release/tag cuối.
 
 ## 4. Việc tiếp theo
 
-Tiếp tục **Mốc 9 — Tài liệu và demo cuối**, theo thứ tự:
-
-1. Hoàn thiện architecture, feature catalog và runbook.
-2. Làm slide và chuẩn bị demo future-event exclusion.
-
-Mốc 6 đã hoàn thành versioned/partitioned offline table, lineage manifest và idempotent
-daily backfill contract. Trước Mốc 7 cần materialize full Silver feature table v1.
+**Cả 9 mốc đã hoàn thành.** Bước tiếp theo ngoài phạm vi MVP là đóng gói Docker và triển khai
+batch pipeline lên Google Cloud theo kiến trúc dự kiến trong `docs/architecture.md`.
 
 ## 5. Nhật ký cập nhật
 
@@ -227,5 +222,6 @@ daily backfill contract. Trước Mốc 7 cần materialize full Silver feature 
 | 2026-11-12 | Hoàn thành Mốc 8: 17 leakage checks, edge-case tests, bounded-backfill reduction 85,6%, output equivalence và durable failure audit log. | Bắt đầu Mốc 9 tài liệu và demo cuối. |
 | 2026-11-12 | Hoàn thiện README và PowerShell end-to-end runner có preflight, clean-workspace guard, 15 stages và fail-fast. | Hoàn thiện architecture, feature catalog và runbook. |
 | 2026-11-13 | Viết báo cáo tổng quan tiếng Việt: chủ đề, kiến trúc, PIT correctness, công việc hoàn thành, model results, hardening, hạn chế và hướng phát triển. | Hoàn thiện architecture/runbook, slide và demo. |
+| 2026-11-17 | Hoàn thành Mốc 9: architecture, runbook, PDF slide 16:9, executable future-event demo, 92 tests và clean-clone reproducibility comparison. | Tạo release `v0.1.0`; chuyển sang kế hoạch triển khai cloud. |
 
 Khi hoàn thành một mốc, thêm một dòng mới vào bảng này. Không xóa lịch sử cũ.

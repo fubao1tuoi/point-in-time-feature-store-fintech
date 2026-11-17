@@ -16,4 +16,6 @@ Thư mục này sẽ chứa tài liệu vận hành và thiết kế được c�
   Google Cloud và phần giải thích lựa chọn/cấu hình CatBoost;
   dùng ngôn ngữ dễ hiểu để đọc, chia sẻ hoặc trình bày.
 - `runbook.md`: cách chạy pipeline và xử lý lỗi.
+- `SLIDES_POINT_IN_TIME_FEATURE_STORE.md`: nội dung slide trình bày, có thể chỉnh sửa.
+- `SLIDES_POINT_IN_TIME_FEATURE_STORE.pdf`: slide PDF 16:9 để báo cáo và demo.
 

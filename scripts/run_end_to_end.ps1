@@ -48,7 +48,7 @@ if ($ExistingOutputs.Count -gt 0) {
 }
 
 $script:Stage = 0
-$TotalStages = if ($SkipProfiling) { 14 } else { 15 }
+$TotalStages = if ($SkipProfiling) { 15 } else { 16 }
 
 function Invoke-PythonStage {
     param(
@@ -94,6 +94,9 @@ Invoke-PythonStage "Milestone 7 reproducibility release" @(
     "pipelines/complete_milestone_seven.py"
 )
 Invoke-PythonStage "Milestone 8 hardening audit" @("pipelines/run_hardening_audit.py")
+Invoke-PythonStage "Future-event invariance demo" @(
+    "pipelines/demo_future_event_invariance.py"
+)
 Invoke-PythonStage "Full test suite" @("-m", "pytest")
 Invoke-PythonStage "Ruff lint" @("-m", "ruff", "check", ".")
 

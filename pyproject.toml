@@ -34,6 +34,7 @@ train-baseline-models = "pit_feature_store.model_training:main"
 evaluate-baseline-models = "pit_feature_store.model_evaluation:main"
 complete-milestone-seven = "pit_feature_store.milestone_seven:main"
 run-hardening-audit = "pit_feature_store.hardening:main"
+demo-future-event-invariance = "pit_feature_store.future_demo:main"
 
 [project.optional-dependencies]
 dev = [

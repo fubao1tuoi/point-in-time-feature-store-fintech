@@ -1835,3 +1835,28 @@ outputs, golden tests, offline store/backfill, temporal training, model results,
 hardening, sản phẩm đầu ra, hạn chế và kế hoạch tiếp theo. Báo cáo phân biệt rõ kết quả đã được
 kiểm chứng trong workspace phát triển với clean-clone dry-run đang thực hiện, tránh kết luận
 repository đã tái tạo hoàn tất trước khi run ở môi trường sạch kết thúc.
+
+## 13. Hoàn thành Mốc 9 — Tài liệu, demo và clean-clone dry-run
+
+Ngày 16/11/2026, pipeline end-to-end được chạy lại trong một clone sạch tại commit `3deadba`.
+Kết quả được đối chiếu với workspace phát triển trước khi xóa clone tạm:
+
+- Silver: 1.097.231 rows và 1.097.231 unique `TransactionID` ở cả hai lần chạy;
+- offline feature table: 1.097.231 rows, không duplicate;
+- training dataset: 590.540 rows, cùng 414.542 train, 86.672 validation và 89.326 internal test;
+- raw file SHA-256, temporal split, preprocessing values, best iterations và model metrics khớp;
+- xác suất dự báo của cả hai model trên validation/internal test giống tuyệt đối;
+- tám amount sum/average columns chỉ lệch do floating-point reduction, maximum absolute
+  difference `8,731149137020111e-10`, không có giá trị nào lệch quá `1e-9`.
+
+Parquet file layout và runtime metadata khác vì mỗi lần chạy có run ID/time riêng. Model binary
+SHA-256 khác nhưng prediction và metric giống hoàn toàn, nên kết luận là functional/semantic
+reproducibility đạt; byte-for-byte model reproducibility không được tuyên bố.
+
+Mốc 9 bổ sung:
+
+- `docs/architecture.md`: kiến trúc local, PIT rule, data layers, quality gates và cloud plan;
+- `docs/runbook.md`: setup, monitoring, verification, backfill, failure và rollback procedures;
+- `pipelines/demo_future_event_invariance.py`: demo executable, fail nếu future event đổi past;
+- `docs/SLIDES_POINT_IN_TIME_FEATURE_STORE.md` và PDF 16:9;
+- test tự động cho demo future-event invariance.

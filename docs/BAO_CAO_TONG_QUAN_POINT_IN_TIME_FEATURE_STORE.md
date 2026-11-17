@@ -397,16 +397,19 @@ Nếu pipeline lỗi, dữ liệu tạm không được công bố và file log 
 - báo cáo tổng quan bằng Markdown và PDF;
 - tài liệu giải thích từng phần đã làm.
 
-Đang thực hiện:
+Đã hoàn thành thêm:
 
-- cập nhật sơ đồ kiến trúc và runbook cuối;
-- làm slide;
-- chuẩn bị demo dữ liệu tương lai bị loại;
-- chạy thử toàn bộ project trên một thư mục clone sạch;
-- dọn repository và tạo phiên bản phát hành cuối.
+- sơ đồ kiến trúc và runbook vận hành;
+- slide trình bày dạng Markdown và PDF 16:9;
+- demo executable chứng minh future event không đổi past features;
+- chạy lại end-to-end trong một clone sạch;
+- đối chiếu row count, feature, prediction và metric giữa hai lần chạy.
 
-**Kết quả hiện tại:** Pipeline phát triển đã hoàn thành; bước xác nhận cuối trên môi trường sạch
-chưa được tuyên bố thành công cho tới khi lần chạy đó kết thúc.
+Clean run tái tạo 1.097.231 Silver/offline rows và 590.540 training rows. Xác suất dự báo của
+hai model trên validation/internal test giống tuyệt đối. Một số phép cộng số thực chỉ lệch dưới
+`1e-9` do thứ tự cộng song song và không làm thay đổi kết quả mô hình.
+
+**Kết quả:** Mốc 9 đã có đủ tài liệu, slide, demo và bằng chứng tái tạo trên môi trường sạch.
 
 ---
 
@@ -645,7 +648,7 @@ ra kết quả. Có thể coi file này là “phiếu lý lịch” của lần
 5. Phần tối ưu mới giảm dữ liệu trung gian, chưa chứng minh chạy nhanh hơn ở quy mô lớn.
 6. Nhóm chỉ có thông tin thẻ chưa cải thiện đồng đều ở mọi chỉ số.
 7. Mô hình chưa được tối ưu sâu vì mục tiêu chính là kiểm chứng hệ thống dữ liệu.
-8. Kết quả clean-clone dry-run cần hoàn tất trước khi phát hành phiên bản cuối.
+8. Clean-clone chứng minh kết quả logic có thể tái tạo nhưng model binary chưa giống từng byte.
 9. Kiến trúc Google Cloud hiện là kế hoạch tuần 3–5, chưa được xem là kết quả đã triển khai.
 
 ---
@@ -675,4 +678,7 @@ trình bày và bàn giao hoàn chỉnh.
 - [`feature_catalog.md`](./feature_catalog.md): danh sách đặc trưng.
 - [`model_evaluation.md`](./model_evaluation.md): kết quả đánh giá mô hình.
 - [`hardening_report.md`](./hardening_report.md): kiểm tra độ đúng và độ an toàn.
+- [`architecture.md`](./architecture.md): kiến trúc và luồng dữ liệu.
+- [`runbook.md`](./runbook.md): hướng dẫn vận hành và xử lý lỗi.
+- [`SLIDES_POINT_IN_TIME_FEATURE_STORE.pdf`](./SLIDES_POINT_IN_TIME_FEATURE_STORE.pdf): slide báo cáo.
 - [`../README.md`](../README.md): hướng dẫn thiết lập và chạy toàn bộ project.
