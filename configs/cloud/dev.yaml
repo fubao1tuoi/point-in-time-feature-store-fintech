@@ -1,0 +1,58 @@
+version: 1
+environment: dev
+
+gcp:
+  project_id: ${GCP_PROJECT_ID}
+  region: ${GCP_REGION}
+  data_bucket: ${GCP_DATA_BUCKET}
+  artifact_registry_repository: pit-feature-store
+  bigquery_dataset: pit_feature_store_ops
+
+naming:
+  resource_prefix: pit-fs
+  image_name: pipeline
+  jobs:
+    ingest: pit-ingest
+    features: pit-features
+    score: pit-score
+  workflow: pit-daily-pipeline
+  scheduler: pit-daily-trigger
+
+runtime_paths:
+  # Cloud Run sẽ mount private Cloud Storage bucket tại PIT_DATA_ROOT.
+  data_root: ${PIT_DATA_ROOT}
+  raw_root: ${PIT_DATA_ROOT}/raw
+  bronze_root: ${PIT_DATA_ROOT}/bronze
+  silver_root: ${PIT_DATA_ROOT}/silver
+  offline_store_root: ${PIT_DATA_ROOT}/offline
+  training_root: ${PIT_DATA_ROOT}/training
+  artifacts_root: ${PIT_DATA_ROOT}/artifacts
+  models_root: ${PIT_DATA_ROOT}/models
+  reports_root: ${PIT_DATA_ROOT}/reports
+  manifests_root: ${PIT_DATA_ROOT}/manifests
+  catalog_root: ${PIT_DATA_ROOT}/catalog
+
+storage_prefixes:
+  raw: raw
+  bronze: bronze
+  silver: silver
+  offline_store: offline
+  training: training
+  artifacts: artifacts
+  models: models
+  reports: reports
+  manifests: manifests
+  catalog: catalog
+
+execution:
+  timezone: UTC
+  default_feature_version: 1
+  default_model_version: 1
+  default_task_count: 1
+  default_max_retries: 1
+  structured_logging: true
+
+labels:
+  application: pit-feature-store
+  environment: dev
+  managed_by: terraform

@@ -1,0 +1,26 @@
+{
+  "rule": [
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "daysSinceNoncurrentTime": 7,
+        "numNewerVersions": 1
+      }
+    },
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "age": 7,
+        "matchesPrefix": [
+          "staging/",
+          "tmp/",
+          "failed/"
+        ]
+      }
+    }
+  ]
+}

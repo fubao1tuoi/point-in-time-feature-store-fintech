@@ -374,6 +374,58 @@ Các trường hợp đặc biệt cũng được kiểm tra:
 Pipeline backfill được thu hẹp để chỉ xem xét các nhóm giao dịch liên quan. Trong bộ kiểm tra
 nhỏ, số dòng lịch sử cần xem xét giảm từ 10.000 xuống 1.440, tương đương 85,6%.
 
+#### Giải thích benchmark backfill
+
+Con số trên đến từ một micro-benchmark có kiểm soát, không phải từ toàn bộ IEEE-CIS. Code tạo
+tạm 5.000 giao dịch giả lập trong DuckDB, gồm 1.000 entity và mỗi giao dịch cách nhau 10 phút.
+Như vậy dữ liệu trải dài khoảng 34,7 ngày, đủ lịch sử cho các cửa sổ 1 giờ, 24 giờ và 7 ngày,
+nhưng vẫn đủ nhỏ để hardening audit chạy nhanh và lặp lại ổn định.
+
+Benchmark backfill đúng một ngày. Vì cứ 10 phút có một giao dịch nên ngày đó có:
+
+```text
+24 giờ × 6 giao dịch/giờ = 144 observations cần tạo feature
+```
+
+Cách baseline đưa toàn bộ 5.000 history rows vào primary entity view và lại đưa 5.000 rows
+vào secondary entity view:
+
+```text
+5.000 primary candidates + 5.000 secondary candidates = 10.000 logical candidates
+```
+
+Dataset vẫn chỉ có 5.000 giao dịch. `10.000` là số lượt history row được chuẩn bị cho hai cách
+nhóm entity, không phải số giao dịch vật lý và không phải số output.
+
+Cách tối ưu lấy 144 entity xuất hiện trong ngày backfill, rồi dùng semi-join để chỉ giữ lịch
+sử thuộc các entity này. Mỗi entity liên quan xuất hiện 5 lần trước cutoff trong dữ liệu giả
+lập, do đó:
+
+```text
+Primary:   144 entity × 5 rows = 720 candidates
+Secondary: 144 entity × 5 rows = 720 candidates
+Tổng:                             1.440 candidates
+```
+
+Pipeline không xóa dữ liệu nguồn. Nó chỉ loại khỏi bảng trung gian các entity chắc chắn không
+thể đóng góp vào observations của ngày backfill và các event nằm sau observation cuối cùng.
+Sau bước lọc này, PIT engine vẫn kiểm tra cùng entity, time window, current event và future
+event riêng cho từng observation.
+
+```text
+1 - 1.440 / 10.000 = 85,6% candidate reduction
+```
+
+Cả baseline và optimized đều tạo 144 output rows; so sánh hai chiều cho `different rows = 0`
+và semantic fingerprint giống nhau. Vì vậy tối ưu không làm thay đổi feature. Tuy nhiên, tỷ lệ
+85,6% chỉ mô tả lượng dữ liệu trung gian được giảm trong benchmark này, không phải cam kết
+pipeline production luôn nhanh hơn 85,6%.
+
+Dữ liệu giả lập không được lưu thành CSV hoặc Parquet. Hàm `_create_benchmark_source()` trong
+`src/pit_feature_store/hardening.py` tạo một `TEMP TABLE` theo `configs/hardening.yaml`; bảng
+tự biến mất khi `run_hardening_audit.py` kết thúc. Repository chỉ lưu công thức tạo dữ liệu và
+kết quả benchmark.
+
 Thời gian chạy trên bộ nhỏ chưa nhanh hơn vì phải tạo thêm bảng trung gian:
 
 ```text

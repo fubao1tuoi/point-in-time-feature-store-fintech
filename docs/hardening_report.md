@@ -58,6 +58,62 @@ tạo hai reduced history tables. Vì vậy kết quả không được mô tả
 trị chính ở bounded backfill lớn là giảm intermediate/history volume; benchmark production
 scale vẫn cần thực hiện trước khi tuning heuristic tiếp theo.
 
+### Giải thích dễ hiểu các con số
+
+`5.000` là số giao dịch giả lập được tạo tạm trong DuckDB để benchmark, không phải một phần
+của IEEE-CIS và không được lưu thành CSV/Parquet. Các giao dịch cách nhau 10 phút nên 5.000
+dòng tạo ra khoảng 34,7 ngày lịch sử, đủ để thử các window 1 giờ, 24 giờ và 7 ngày.
+
+Khoảng backfill dài đúng một ngày. Với một giao dịch mỗi 10 phút, ngày đó có:
+
+```text
+24 giờ × 6 giao dịch/giờ = 144 observations
+```
+
+Baseline chuẩn bị toàn bộ 5.000 history rows cho primary entity view và thêm 5.000 rows cho
+secondary view. Vì cùng một source được xét theo hai entity views nên báo cáo ghi `10.000
+logical history candidates`; dataset vẫn chỉ có 5.000 giao dịch.
+
+Trong ngày backfill, 144 observations thuộc 144 entity liên quan. Mỗi entity này xuất hiện 5
+lần trong phần lịch sử trước cutoff, nên history đã lọc còn:
+
+```text
+Primary:   144 entity × 5 rows = 720 candidates
+Secondary: 144 entity × 5 rows = 720 candidates
+Tổng:                             1.440 candidates
+```
+
+Pipeline không xóa dữ liệu nguồn. Nó chỉ không đưa history của entity chắc chắn không liên
+quan, hoặc event nằm sau observation cuối cùng, vào bảng trung gian. Sau bước lọc thô, PIT
+predicate vẫn kiểm tra cùng entity, time window, current-event và future-event cho từng
+observation.
+
+```text
+1 - 1.440 / 10.000 = 85,6% candidate reduction
+```
+
+Hai cách đều tạo 144 feature rows và `different rows = 0`. Con số 85,6% vì vậy chỉ chứng minh
+giảm dữ liệu trung gian trong micro-benchmark này, không có nghĩa pipeline production luôn
+nhanh hơn 85,6%. Thực tế runtime nhỏ tăng từ 0,114 lên 0,179 giây vì chi phí tạo bảng lọc và
+semi-join lớn hơn lợi ích trên dataset chỉ có 5.000 dòng.
+
+### Dữ liệu giả lập nằm ở đâu?
+
+Dữ liệu được tạo bởi `_create_benchmark_source()` trong `src/pit_feature_store/hardening.py`
+từ cấu hình `configs/hardening.yaml`:
+
+```yaml
+source_rows: 5000
+entity_count: 1000
+seconds_between_events: 600
+start_time: "2017-01-31T00:00:00Z"
+end_time: "2017-02-01T00:00:00Z"
+```
+
+Hàm tạo `TEMP TABLE silver_transactions` trong DuckDB in-memory. Bảng 5.000 dòng chỉ tồn tại
+trong lúc `python pipelines/run_hardening_audit.py` chạy và tự biến mất khi process kết thúc.
+Repository lưu công thức tạo dữ liệu và kết quả benchmark, không lưu thêm một dataset giả lập.
+
 ## 5. Chứng minh tương đương
 
 Baseline và optimized được chạy trên cùng input/range. So sánh hai chiều bằng `EXCEPT ALL`:

@@ -1860,3 +1860,146 @@ Mốc 9 bổ sung:
 - `pipelines/demo_future_event_invariance.py`: demo executable, fail nếu future event đổi past;
 - `docs/SLIDES_POINT_IN_TIME_FEATURE_STORE.md` và PDF 16:9;
 - test tự động cho demo future-event invariance.
+
+## 14. Cách đọc benchmark bounded backfill ở Mốc 8
+
+### Benchmark này trả lời câu hỏi gì?
+
+Khi chỉ backfill một ngày, pipeline không nhất thiết phải chuẩn bị lịch sử của mọi entity.
+Benchmark so sánh hai cách trên cùng input:
+
+```text
+Baseline:  đưa toàn bộ history vào hai entity views.
+Optimized: chỉ giữ history thuộc entity xuất hiện trong ngày backfill và không nằm sau
+           observation muộn nhất.
+```
+
+Mục tiêu đầu tiên là giảm intermediate history volume nhưng phải giữ feature output giống
+hoàn toàn. Runtime chỉ là chỉ số phụ trong micro-benchmark này.
+
+### Vì sao dùng 5.000 giao dịch?
+
+Đây là synthetic micro-benchmark, không phải mẫu lấy từ IEEE-CIS. Code tạo 5.000 giao dịch,
+1.000 entity và khoảng cách 600 giây giữa hai event. Tổng khoảng thời gian là:
+
+```text
+5.000 × 10 phút = 50.000 phút ≈ 34,7 ngày
+```
+
+Quy mô này đủ tạo lịch sử dài hơn window 7 ngày, nhưng vẫn chạy nhanh và ổn định trong audit.
+Dùng toàn bộ hơn một triệu IEEE-CIS rows sẽ làm hardening test nặng, khó lặp lại và không cần
+thiết cho mục tiêu chứng minh equivalence. `5.000` là lựa chọn kiểm thử thực dụng, không phải
+ngưỡng bắt buộc hoặc con số được học từ dữ liệu thật.
+
+### Từ 5.000 source rows tới 144 observations
+
+Benchmark backfill khoảng `[2017-01-31, 2017-02-01)`. Mỗi 10 phút có một event nên một ngày có:
+
+```text
+24 × 60 / 10 = 144 observations
+```
+
+Feature output vì vậy có 144 rows. `source rows`, `observations` và `history candidates` là ba
+khái niệm khác nhau:
+
+```text
+5.000 source rows       = toàn bộ dữ liệu benchmark
+144 observations       = giao dịch cần tạo feature trong ngày backfill
+history candidates     = lượt history row được chuẩn bị cho bước tính feature
+```
+
+### Vì sao baseline là 10.000 candidates?
+
+Pipeline tính hai feature views độc lập:
+
+```text
+Primary history:   5.000 rows
+Secondary history: 5.000 rows
+Tổng logical candidates = 10.000
+```
+
+Không có 10.000 giao dịch vật lý. Cùng 5.000 source rows được xem xét một lần cho
+`card_address_entity_id` và một lần cho `card_entity_id`.
+
+### Vì sao optimized còn 1.440 candidates?
+
+Ngày backfill có 144 entity liên quan. Synthetic data phân entity theo `i % 1000`, vì vậy mỗi
+entity lặp sau 1.000 events, tương đương khoảng 6,94 ngày. Trước cutoff, mỗi entity được chọn
+có 5 occurrences:
+
+```text
+144 entity × 5 occurrences = 720 rows cho primary view
+144 entity × 5 occurrences = 720 rows cho secondary view
+Tổng optimized candidates  = 1.440
+```
+
+Semi-join chỉ giữ history có entity nằm trong danh sách entity của observations. Điều kiện
+`history.event_time <= MAX(prediction_time)` loại event sau observation cuối cùng. Đây mới là
+bước lọc thô; feature engine sau đó vẫn áp dụng strict tuple cutoff và window 1h/24h/7d cho
+từng observation.
+
+### Cách hiểu 85,6%
+
+```text
+candidate reduction = 1 - 1.440 / 10.000 = 85,6%
+```
+
+Đây là tỷ lệ giảm logical history candidates trong bộ benchmark cố định. Nó không phải phần
+trăm dữ liệu bị xóa, cũng không phải cam kết runtime production. Output equivalence được chứng
+minh bằng `EXCEPT ALL` hai chiều và semantic fingerprint: 144 output rows, zero difference.
+
+Micro runtime của optimized cao hơn (`0,179 s` so với `0,114 s`) vì tạo hai reduced history
+tables và semi-join có overhead. Kết luận đúng là giảm intermediate volume; chỉ benchmark ở
+quy mô thật mới cho biết có speedup hay không.
+
+### Synthetic data được lưu ở đâu?
+
+Nó không được lưu. `_create_benchmark_source()` trong `src/pit_feature_store/hardening.py`
+tạo `TEMP TABLE silver_transactions` trong DuckDB in-memory theo `configs/hardening.yaml`.
+Bảng tự biến mất khi hardening process kết thúc. Kết quả được giữ tại
+`reports/generated/hardening/v1/hardening_report.json`; bản giải thích ngắn nằm trong
+`docs/hardening_report.md`.
+
+## 14. Tuần 3 — Container và cloud foundation
+
+### 14.1. Cloud configuration
+
+- Project: `pit-feature-store-dev`; region: `asia-southeast1`.
+- Cấu hình không chứa secret nằm tại `configs/cloud/dev.yaml`.
+- Runtime path được chuẩn hóa thành POSIX `/mnt/pit-data/...`, kể cả khi validate trên Windows.
+- Cloud validator và structured JSON logging có unit tests; `4 passed`, Ruff pass.
+
+### 14.2. Docker local
+
+- Multi-stage `Dockerfile` tạo `runtime` và `test` targets cho Linux amd64.
+- Runtime chạy bằng UID/GID `10001:10001`; raw data, artifact, credential và PDF không vào image.
+- Future-event invariance pass trong container.
+- Full test suite pass khi mount read-only preprocessing artifact và training manifest; Ruff pass.
+
+### 14.3. GCP foundation và Cloud Build
+
+- Private bucket `pit-feature-store-dev-pit-data-dev` dùng Standard storage tại
+  `ASIA-SOUTHEAST1`, uniform access, public access prevention, versioning và soft delete 7 ngày.
+- Lifecycle xóa noncurrent version sau 7 ngày và dọn `staging/`, `tmp/`, `failed/` sau 7 ngày.
+- Artifact Registry `pit-feature-store` dùng immutable Docker tags.
+- `pit-runner-dev` chỉ có `roles/storage.objectUser` trên data bucket.
+- `pit-builder-dev` chỉ có Artifact Registry writer trên repository, Logs Writer và Service
+  Usage Consumer; quyền đọc source chỉ nằm trên Cloud Build staging bucket.
+- Cloud Build `583532b6-d303-403b-ae86-f5018a0bb027` thành công trong `2m34s`.
+- Published digest:
+  `sha256:007eb0a769c083efa48b45a6ffad4e2649c8be1b58959530d65e081895efd00d`.
+
+### 14.4. Cloud Run smoke tests
+
+- `pit-features-5c8xt`: image được pin bằng digest, custom runtime SA, `1 CPU / 1 GiB`,
+  `maxRetries=0`; execution `1/1` và future-event invariance pass trong Cloud Logging.
+- `pit-storage-smoke-w2fps`: Cloud Storage FUSE mount `/mnt/pit-data` với UID/GID `10001`;
+  container ghi, đọc lại và CLI đọc được object `cloud-run-storage-write-ok`.
+- Object và smoke-test job đã được xóa sau khi xác minh.
+
+### 14.5. Vì sao smoke test chưa đủ để chạy full pipeline?
+
+Smoke test chỉ chứng minh control plane, image, IAM, logging và basic file I/O hoạt động. Full
+IEEE-CIS pipeline còn phải kiểm tra DuckDB memory, lượng dữ liệu scan, thời gian chạy, temp space
+và đặc tính không hoàn toàn POSIX của Cloud Storage FUSE. Vì vậy chưa xây Scheduler/Workflow
+trước khi Bronze, Silver và PIT materialization vượt qua feasibility spike trên dữ liệu thật.

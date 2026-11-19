@@ -29,6 +29,9 @@ Thumbs.db
 ~$*
 *.tmp
 
+# Local reference paper (not part of the repository deliverables)
+/p4230-camacho-rodriguez.pdf
+
 # Raw and processed datasets
 data/raw/*
 data/bronze/*

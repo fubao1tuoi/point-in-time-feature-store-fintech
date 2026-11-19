@@ -1,0 +1,52 @@
+steps:
+  - id: build-runtime-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --target
+      - runtime
+      - --tag
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+      - .
+
+  - id: verify-future-event-invariance
+    name: gcr.io/cloud-builders/docker
+    waitFor:
+      - build-runtime-image
+    args:
+      - run
+      - --rm
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+
+  - id: verify-non-root-user
+    name: gcr.io/cloud-builders/docker
+    waitFor:
+      - build-runtime-image
+    entrypoint: sh
+    args:
+      - -c
+      - >-
+        test "$$(docker image inspect
+        ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+        --format '{{.Config.User}}')" = "10001:10001"
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+
+serviceAccount: projects/$PROJECT_ID/serviceAccounts/pit-builder-dev@$PROJECT_ID.iam.gserviceaccount.com
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamicSubstitutions: true
+
+substitutions:
+  _REGION: asia-southeast1
+  _REPOSITORY: pit-feature-store
+  _IMAGE_NAME: pipeline
+  _IMAGE_TAG: build-${BUILD_ID}
+
+timeout: 1800s
+
+tags:
+  - pit-feature-store
+  - container-build
